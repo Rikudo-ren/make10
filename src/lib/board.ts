@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { EPS, formatExpr, makeOpNode, num, type ExprNode, type Op } from './solver';
+import { EPS, formatExpr, makeOpNode, normalizeKey, num, type ExprNode, type Op } from './solver';
 
 export interface Tile {
   id: number;
@@ -150,6 +150,8 @@ export function useBoard(numbers: number[], integerOnly: boolean) {
   const finished = tiles.length === 1;
   const finalValue = finished ? tiles[0].expr.val : null;
   const finalFormula = finished ? formatExpr(tiles[0].expr) : '';
+  // 表示文字列ではなく、この式の等価判定キー。解答例との「あなたの解答」照合に使う。
+  const finalKey = finished ? normalizeKey(tiles[0].expr) : '';
 
   return {
     slots,
@@ -167,6 +169,7 @@ export function useBoard(numbers: number[], integerOnly: boolean) {
     finished,
     finalValue,
     finalFormula,
+    finalKey,
     flash,
   };
 }
