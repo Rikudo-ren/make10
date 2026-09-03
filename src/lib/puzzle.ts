@@ -4,7 +4,7 @@ import type { Settings } from './types';
 export interface Puzzle {
   numbers: number[];
   target: number;
-  solutions: string[];
+  solutions: Solution[];
   solutionCount: number;
   difficultyLabel: string;
 }
@@ -58,7 +58,7 @@ export function generatePuzzle(s: Settings, maxAttempts?: number): Puzzle | null
       return {
         numbers,
         target,
-        solutions: found.map((f) => f.formula), // 全件を返す
+        solutions: found, // 全件を返す（formula と照合用 key の両方を保持）
         solutionCount: found.length,
         difficultyLabel: difficultyOf(found.length),
       };
