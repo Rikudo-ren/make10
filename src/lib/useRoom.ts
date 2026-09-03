@@ -332,7 +332,7 @@ export function useRoom() {
   }, [isGM, startRound]);
 
   const submitAnswer = useCallback(
-    async (formula: string) => {
+    async (formula: string, key: string) => {
       const code = roomIdRef.current;
       const data = roomRef.current;
       if (!code || !data || !uid || !data.currentRound) return;
@@ -346,6 +346,7 @@ export function useRoom() {
       try {
         await set(ref(db, `rooms/${code}/answers/${r.roundIndex}/${uid}`), {
           formula: formula.slice(0, 60),
+          key,
           submittedAt: serverTimestamp(),
           adjustedElapsedMs: elapsed,
         });
@@ -364,6 +365,7 @@ export function useRoom() {
     try {
       await set(ref(db, `rooms/${code}/answers/${r.roundIndex}/${uid}`), {
         formula: 'PASS',
+        key: '',
         submittedAt: serverTimestamp(),
         adjustedElapsedMs: 0,
         passed: true,
@@ -388,7 +390,7 @@ export function useRoom() {
       const snap = await get(ref(db, `rooms/${code}/answers/${r.roundIndex}`));
       const answers = (snap.val() ?? {}) as Record<
         string,
-        { formula: string; adjustedElapsedMs: number; passed?: boolean }
+        { formula: string; key?: string; adjustedElapsedMs: number; passed?: boolean }
       >;
       const correct = Object.entries(answers)
         .filter(([, a]) => !a.passed)
@@ -397,7 +399,7 @@ export function useRoom() {
       const maxRank = settings.scoringMode === 'first' ? 1 : (settings.maxRankCount || 3);
       const results: Record<
         string,
-        { adjustedElapsedMs: number; formula: string; gained: number; rank: number }
+        { adjustedElapsedMs: number; formula: string; key: string; gained: number; rank: number }
       > = {};
 
       for (let i = 0; i < correct.length; i++) {
@@ -407,6 +409,7 @@ export function useRoom() {
         results[pUid] = {
           adjustedElapsedMs: a.adjustedElapsedMs,
           formula: a.formula,
+          key: a.key ?? '',
           gained,
           rank,
         };
