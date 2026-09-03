@@ -1,24 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
+import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
 import { Button, Card, formatMs, SectionTitle } from './ui';
 import { cn } from '../utils/cn';
 
 /**
  * 解答例一覧。プレイヤーの解答式を紐付けて印表示。
+ * 紐付けは表示文字列ではなく等価判定キー（Solution.key）で行う。
+ * 重複排除で解答例の代表として残る式の文字列が、プレイヤーが実際に
+ * 入力した式の文字列と異なっていても、数式として同じなら一致させる。
  */
 function SolutionsList({
   solutions,
   target,
-  playerFormulas,
-  myFormula,
+  playerNamesByKey,
+  myKey,
 }: {
-  solutions: string[];
+  solutions: Solution[];
   target: number;
-  /** { formula → [playerNames] } */
-  playerFormulas?: Map<string, string[]>;
-  myFormula?: string;
+  /** { 等価判定key → [playerNames] } */
+  playerNamesByKey?: Map<string, string[]>;
+  myKey?: string;
 }) {
   const pageSize = 5;
   const [page, setPage] = useState(0);
@@ -32,12 +36,12 @@ function SolutionsList({
     <div>
       <ul className="space-y-1.5">
         {shown.map((s) => {
-          const names = playerFormulas?.get(s) ?? [];
-          const isMyAnswer = s === myFormula;
+          const names = playerNamesByKey?.get(s.key) ?? [];
+          const isMyAnswer = !!myKey && s.key === myKey;
           const othersWhoAnswered = isMyAnswer ? names.filter((n) => n !== '(you)') : names;
           return (
             <li
-              key={s}
+              key={s.key}
               className={cn(
                 'rounded-xl border px-4 py-2 text-left text-base font-bold sm:text-lg',
                 isMyAnswer
@@ -47,7 +51,7 @@ function SolutionsList({
                     : 'border-white/8 bg-white/5 text-amber-200',
               )}
             >
-              <span>{s}</span>{' '}
+              <span>{s.formula}</span>{' '}
               <span className="text-amber-400">= {target}</span>
               {isMyAnswer && (
                 <span className="ml-2 text-xs font-bold text-indigo-300">⭐ あなたの解答</span>
@@ -157,24 +161,24 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const iAmSolved = myLiveIndex >= 0;
   const myLiveRank = myLiveIndex >= 0 ? myLiveIndex + 1 : null;
 
-  // 解答例とプレイヤーの紐付け（式文字列 → [名前]）
+  // 解答例とプレイヤーの紐付け（等価判定key → [名前]）
   // あなたの解答には "(you)" というマーカーをつける
-  const playerFormulas = useMemo(() => {
+  const playerNamesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const [pId, res] of Object.entries(results)) {
-      const f = res.formula;
-      if (!f) continue;
-      const list = m.get(f) ?? [];
+      const k = res.key;
+      if (!k) continue;
+      const list = m.get(k) ?? [];
       const name = pId === uid ? '(you)' : nameOf(pId);
       list.push(name);
-      m.set(f, list);
+      m.set(k, list);
     }
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, uid]);
 
-  // あなたの解答式を特定
-  const myFormula = uid && results[uid] ? results[uid].formula : undefined;
+  // あなたの解答の等価判定キーを特定
+  const myKey = uid && results[uid] ? results[uid].key : undefined;
 
   const showMask = isCountdown || transitioning;
 
@@ -273,7 +277,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             }
             passed={!!myAnswer?.passed}
             isCountdown={showMask}
-            onSolved={(f) => ctrl.submitAnswer(f)}
+            onSolved={(f, k) => ctrl.submitAnswer(f, k)}
             onPass={() => ctrl.passRound()}
           />
         </Card>
@@ -467,8 +471,8 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               <SolutionsList
                 solutions={allSols}
                 target={r.target}
-                playerFormulas={playerFormulas}
-                myFormula={myFormula}
+                playerNamesByKey={playerNamesByKey}
+                myKey={myKey}
               />
             </div>
 
