@@ -221,7 +221,16 @@ function normalizeKeyInner(n: ExprNode): string {
   return `(${lk}${n.op}${rk})`;
 }
 
-function normalizeKey(n: ExprNode): string {
+/**
+ * 式（ExprNode）の等価判定キーを返す。
+ * ×1/÷1/+0 等の恒等演算や、加減算・乗除算内の項の並び順の違いは
+ * 同一キーになる（＝別解として区別しない）。
+ * プレイヤーの解答と解答例リストの紐付け（「あなたの解答」判定）は、
+ * 表示用の formula 文字列ではなく必ずこのキーで行うこと。
+ * 重複排除時に代表として残る formula 文字列は、プレイヤーが実際に
+ * 入力した式の文字列表現と一致するとは限らないため。
+ */
+export function normalizeKey(n: ExprNode): string {
   return normalizeKeyInner(simplifyIdentity(n));
 }
 
