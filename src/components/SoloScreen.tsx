@@ -10,7 +10,9 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [showSettings, setShowSettings] = useState(true);
   const [startedAt, setStartedAt] = useState(Date.now());
-  const [cleared, setCleared] = useState<{ ms: number; formula: string } | null>(null);
+  const [cleared, setCleared] = useState<{ ms: number; formula: string; key: string } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [solPage, setSolPage] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -41,9 +43,9 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onSolved = (formula: string) => {
+  const onSolved = (formula: string, key: string) => {
     const ms = Date.now() - startedAt;
-    setCleared({ ms, formula });
+    setCleared({ ms, formula, key });
   };
 
   const solutions = useMemo(() => puzzle?.solutions ?? [], [puzzle]);
@@ -181,7 +183,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
             </Button>
             <Button
               variant="soft"
-              onClick={() => setCleared({ ms: 0, formula: '' })}
+              onClick={() => setCleared({ ms: 0, formula: '', key: '' })}
               disabled={!!cleared}
             >
               ギブアップ（解答例を見る）
@@ -212,10 +214,13 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
               <div className="text-xs font-black tracking-widest text-indigo-200">解答例</div>
               <ul className="mt-2 space-y-1">
                 {currentSols.map((s) => {
-                  const isMyAnswer = cleared?.formula === s;
+                  // 表示文字列ではなく等価判定キーで照合する。重複排除で代表として
+                  // 残った解答例の文字列が、プレイヤーが実際に入力した式の文字列と
+                  // 異なっていても、数式として同じなら「あなたの解答」として扱う。
+                  const isMyAnswer = !!cleared?.formula && cleared.key === s.key;
                   return (
                     <li
-                      key={s}
+                      key={s.key}
                       className={cn(
                         'rounded-lg px-3 py-1.5 font-bold',
                         isMyAnswer
@@ -223,7 +228,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                           : 'bg-white/5 text-amber-200',
                       )}
                     >
-                      {s} = {puzzle.target}
+                      {s.formula} = {puzzle.target}
                       {isMyAnswer && (
                         <span className="ml-2 text-xs text-emerald-300">← あなたの解答</span>
                       )}
