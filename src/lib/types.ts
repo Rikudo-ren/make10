@@ -1,4 +1,4 @@
-import type { Op } from './solver';
+import type { Op, Solution } from './solver';
 
 export interface Settings {
   numberCount: number; // 3〜6
@@ -58,16 +58,21 @@ export interface RoundData {
   startedAt: number;
   endedAt?: number | null;
   winnerUid?: string | null;
-  solutions?: string[];
+  solutions?: Solution[];
   solutionCount?: number;
   difficultyLabel?: string | null;
   /** 'answered' | 'passed' | 'timeup' */
   outcome?: string | null;
-  results?: Record<string, { adjustedElapsedMs: number; formula: string; gained: number; rank: number }>;
+  results?: Record<
+    string,
+    { adjustedElapsedMs: number; formula: string; key: string; gained: number; rank: number }
+  >;
 }
 
 export interface AnswerData {
   formula: string;
+  /** 解答例との照合に使う等価判定キー（表示文字列が一致しなくても同じ式なら一致する） */
+  key: string;
   submittedAt: number;
   adjustedElapsedMs: number;
   passed?: boolean;
