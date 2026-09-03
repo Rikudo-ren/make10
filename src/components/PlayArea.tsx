@@ -12,7 +12,8 @@ interface Props {
   disabled?: boolean;
   disabledReason?: string;
   penaltyMode: 'none' | 'lock';
-  onSolved: (formula: string) => void;
+  /** formula: 表示用の式文字列 / key: 解答例との照合に使う等価判定キー */
+  onSolved: (formula: string, key: string) => void;
   onPass?: () => void;
   passed?: boolean;
   isCountdown?: boolean;
@@ -54,7 +55,7 @@ export function PlayArea({
     if (Math.abs(board.finalValue - target) < EPS) {
       if (solvedRef.current !== board.finalFormula) {
         solvedRef.current = board.finalFormula;
-        onSolved(board.finalFormula);
+        onSolved(board.finalFormula, board.finalKey);
       }
     } else {
       setWrongShake((w) => w + 1);
