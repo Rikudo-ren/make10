@@ -13,21 +13,43 @@
 
 | パス | 内容 | 保存される期間 |
 | --- | --- | --- |
-| `rooms/{code}/players/...` | ニックネーム・得点・準備OK | ルームが削除されるまで |
+| `rooms/{code}/players/...` | ニックネーム・得点・準備OK | **最終アクセスから24時間**（自動削除） |
 | `rooms/{code}/currentRound` | 出題中の問題・解答例・結果 | 同上 |
 | `rooms/{code}/answers/{round}/{uid}` | 各ラウンドの解答・パスの記録 | 同上 |
 | `rooms/{code}/history/{round}` | 終わったラウンドの結果 | 同上 |
 | `rooms/{code}/chat/{msgId}` | **ゲーム内チャット** | 直近 **60件** のみ（超えた分は送信時に自動削除） |
+| `rooms/{code}/expiresAt` | そのルームの有効期限（最終アクセス + 24時間） | ルームと一緒に消える |
+| `rooms/index/{code}` | 期限切れ掃除用の軽量インデックス（`expiresAt` だけ） | ルームと一緒に消える |
 | `rooms/{code}/preparingAt` | 「問題を準備中」表示用の一時フラグ | 出題が終わると自動削除 |
 | ブラウザの `localStorage` | `make10.room`（ルームコード）と `make10.name`（ニックネーム）だけ | 端末内のみ |
 
 ### 「記録」は残り続ける？
 
+**残りません。最終アクセスから24時間で自動削除されます。**
+
 - **スコアや履歴をどこかに永久保存する仕組みはありません。** すべて `rooms/{code}` の中だけです。
 - **GM（ルーム作成者）が「退出」すると、ルームごと削除**します。チャット・スコア・履歴・解答がまとめて消えます。
+- さらに **最終アクセス（作成・参加・解答・パス・チャット・設定変更など）から24時間経過したルーム**は、
+  アプリを開いた人のクライアントが自動で削除します（下の「24時間TTLの仕組み」参照）。
+- 期限切れのルームにルームコードで参加しようとした場合も、その場で削除してエラーにします。
 - ルームが削除されると、参加者側も自動でトップ画面に戻ります（`rooms/{code}` が消えたことを検知）。
-- ただし **GMがタブを閉じた／電源が落ちただけ**の場合は削除が走らず、ルームが残ることがあります。その掃除は下の「4. 古いルームを自動で消す（任意）」を参照してください。
 - チャットはルーム単位で直近60件だけなので、チャット履歴がサーバーに溜まり続けることはありません。
+
+### 24時間TTLの仕組み（Cloud Functions 不要）
+
+Realtime Database には Firestore の TTL に相当する自動削除機能がないため、
+**「ルームの期限だけを持つ軽量インデックス」＋「クライアント側の掃除」** で実現しています。
+
+1. ルーム作成・参加・操作のたびに `rooms/{code}/expiresAt` と `rooms/index/{code}/expiresAt` を
+   「今 + 24時間」に更新（連続操作時は1分に1回までに間引き）
+2. アプリ起動時と10分おきに `rooms/index` を読み、`expiresAt` を過ぎたルームを丸ごと削除
+3. ゴミが残らないよう、`rooms/index` のエントリもルームと同時に削除
+
+- 追加の Firebase 作業は **不要**です（ルールは `rooms` 配下を読み書きできればOK）。
+- 誰もアプリを開かないと掃除は走りませんが、その場合も次に誰かが開いた時点で消えます。
+- **この機能より前に作られた古いルーム**（期限情報が無いもの）は、1日1回の自動スキャンで
+  「その時点から24時間」の期限が付与されます。すぐ消したければコンソールから手動削除してください。
+- 厳密に「24時間後に必ず消す」必要があるなら、下の Cloud Functions 版に置き換えてください。
 
 ---
 
@@ -64,6 +86,7 @@ Firebase コンソール → **Realtime Database** → **ルール** タブに�
             ".validate": "newData.hasChildren(['uid','name','text','at']) && newData.child('text').isString() && newData.child('text').val().length <= 140 && newData.child('name').isString() && newData.child('name').val().length <= 20 && newData.child('at').isNumber()"
           }
         },
+        "expiresAt": { ".validate": "newData.isNumber()" },
         "players": {
           "$uid": {
             "name": { ".validate": "newData.isString() && newData.val().length <= 20" },
@@ -94,13 +117,10 @@ firebase deploy --only database --project make10-47c34
 > ⚠️ ルームコードを知っていれば誰でもそのルームに読み書きできる「合言葉方式」です。
 > 本気で他人を締め出したい場合は Cloud Functions などサーバー側の実装が必要になります。
 
-### (3) 任意: 古いルームを自動削除する
+### (3) 任意: サーバー側でも確実に消したい場合
 
-`rooms` は GM が退出すれば消えますが、ブラウザを落とした場合は残ります。
-放置が気になる場合は次のどちらかで掃除してください。
-
-- **手動**: Firebase コンソール → Realtime Database → `rooms` を開いて不要なコードを削除
-- **自動**: 下記の Cloud Functions（要 Blaze プラン）
+クライアント側の掃除で通常は十分ですが、「誰もアプリを開いていなくても24時間で必ず消したい」
+場合は下の Cloud Functions 版（要 Blaze プラン）に置き換えてください。
 
 ---
 
@@ -113,6 +133,7 @@ firebase deploy --only database --project make10-47c34
 | チャットが61件目以降 | 一番古いメッセージから自動削除（直近60件を保持） |
 | GMが「履歴を消す」 | そのルームのチャット全件 |
 | 出題が完了 | `preparingAt`（準備中フラグ） |
+| **最終アクセスから24時間** | **`rooms/{code}` と `rooms/index/{code}`（アプリ起動時の自動掃除）** |
 
 > 補足: チャットを「送信した瞬間だけ表示して保存しない」ようにするには Realtime Database ではなく
 > Firestore の TTL か、Functions 経由の配信が必要です。今回は「ルーム内・直近60件・解散で全消し」で
@@ -120,10 +141,11 @@ firebase deploy --only database --project make10-47c34
 
 ---
 
-## 4. 古いルームを自動で消す Cloud Functions のサンプル（任意）
+## 4. サーバー側で24時間TTLを厳密に運用する場合（任意）
 
 `functions/index.js` に置いて `firebase deploy --only functions` すると、
-**6時間アクセスのないルーム**を15分おきに削除します。
+**15分おきに `rooms/index` を見て、期限切れルームを削除**します
+（クライアント側の掃除と同じルールなので、併用しても問題ありません）。
 
 ```js
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -132,29 +154,35 @@ const { getDatabase } = require('firebase-admin/database');
 
 initializeApp();
 
-const MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6時間
+const TTL_MS = 24 * 60 * 60 * 1000;
 
 exports.cleanupRooms = onSchedule('every 15 minutes', async () => {
   const db = getDatabase();
-  const snap = await db.ref('rooms').get();
-  const rooms = snap.val() || {};
   const now = Date.now();
-  const updates = {};
 
-  for (const [code, room] of Object.entries(rooms)) {
-    const times = [];
-    if (typeof room?.preparingAt === 'number') times.push(room.preparingAt);
-    if (typeof room?.currentRound?.startedAt === 'number') times.push(room.currentRound.startedAt);
-    for (const m of Object.values(room?.chat || {})) {
-      if (typeof m?.at === 'number') times.push(m.at);
-    }
-    const last = times.length > 0 ? Math.max(...times) : 0;
-    if (last === 0 || now - last > MAX_AGE_MS) {
+  // 1) 期限切れルームを削除
+  const idx = (await db.ref('rooms/index').get()).val() || {};
+  const updates = {};
+  for (const [code, entry] of Object.entries(idx)) {
+    const exp = entry?.expiresAt;
+    if (typeof exp === 'number' && exp <= now) {
       updates[`rooms/${code}`] = null;
+      updates[`rooms/index/${code}`] = null;
     }
   }
-
   if (Object.keys(updates).length > 0) await db.ref().update(updates);
+
+  // 2) 期限情報が無いルーム（旧データ）に期限を付ける
+  const rooms = (await db.ref('rooms').get()).val() || {};
+  const idx2 = (await db.ref('rooms/index').get()).val() || {};
+  const fixes = {};
+  for (const code of Object.keys(rooms)) {
+    if (!idx2[code]?.expiresAt) {
+      fixes[`rooms/${code}/expiresAt`] = now + TTL_MS;
+      fixes[`rooms/index/${code}/expiresAt`] = now + TTL_MS;
+    }
+  }
+  if (Object.keys(fixes).length > 0) await db.ref().update(fixes);
 });
 ```
 

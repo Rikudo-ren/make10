@@ -155,7 +155,7 @@ export function ChatPanel({ ctrl, className }: { ctrl: UseRoom; className?: stri
       </form>
 
       <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-        {notice ?? `直近${CHAT_KEEP}件のみ保存（GMが退出するとルームごと削除）`}
+        {notice ?? `直近${CHAT_KEEP}件のみ保存（ルームは24時間で自動削除）`}
       </p>
     </Card>
   );
