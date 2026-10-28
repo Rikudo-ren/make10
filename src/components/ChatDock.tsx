@@ -169,14 +169,18 @@ function ChatLog({
                   mine ? 'border-cyan-300/80 bg-cyan-400/8' : 'border-white/15 bg-white/[0.03]',
                 )}
               >
-                <div className="flex items-baseline gap-1.5">
-                  <span className="num text-[9px] text-slate-500">{formatTime(m.at)}</span>
+                <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                  <span className="num shrink-0 text-[9px] text-slate-500">{formatTime(m.at)}</span>
+                  {/* 名前は切らない: truncate / max-width を付けず、長い名前は折り返して全文出す */}
                   <span
-                    className="max-w-[50%] truncate text-[10px] font-bold tracking-wider"
-                    style={{ color: mine ? '#7ef4ff' : `hsl(${hue} 100% 74%)` }}
+                    className="min-w-0 text-[10px] font-bold tracking-wider break-words"
+                    style={{ color: mine ? '#7ef4ff' : `hsl(${hue} 100% 74%)`, overflowWrap: 'anywhere' }}
                   >
-                    {mine ? 'YOU' : m.name || 'PLAYER'}
+                    {m.name || 'PLAYER'}
                   </span>
+                  {mine && (
+                    <span className="shrink-0 text-[8px] font-bold tracking-wider text-cyan-300/70">YOU</span>
+                  )}
                 </div>
                 <div className="jp mt-0.5 text-[12.5px] leading-snug break-words whitespace-pre-wrap text-slate-100">
                   {m.text}

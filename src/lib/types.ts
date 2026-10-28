@@ -1,6 +1,18 @@
 import type { Op, Solution } from './solver';
+import type { BattleMode, TeamAssignMode, TeamWinCondition } from './teams';
+import { clampTeamCount } from './teams';
+
+export type { BattleMode, TeamAssignMode, TeamWinCondition };
 
 export interface Settings {
+  /** 個人戦 'solo' / チーム戦 'team' */
+  battleMode: BattleMode;
+  /** チーム数（2〜6、チーム戦のみ） */
+  teamCount: number;
+  /** チーム分けの方法（チーム戦のみ） */
+  teamAssignMode: TeamAssignMode;
+  /** チーム戦の勝利条件（チーム戦のみ） */
+  teamWinCondition: TeamWinCondition;
   numberCount: number; // 3〜6
   rangeMin: number;
   rangeMax: number;
@@ -25,6 +37,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  battleMode: 'solo',
+  teamCount: 2,
+  teamAssignMode: 'balanced',
+  teamWinCondition: 'totalScore',
   numberCount: 4,
   rangeMin: 1,
   rangeMax: 9,
@@ -53,6 +69,8 @@ export interface PlayerData {
   score?: number;
   isReady?: boolean;
   rttMs?: number;
+  /** チーム戦での所属チーム（0始まり）。個人戦・未割当は null / undefined */
+  teamId?: number | null;
 }
 
 export interface RoundData {
@@ -104,8 +122,22 @@ export interface RoomData {
   preparingAt?: number | null;
 }
 
+const BATTLE_MODES: BattleMode[] = ['solo', 'team'];
+const TEAM_ASSIGN_MODES: TeamAssignMode[] = ['balanced', 'random', 'manual'];
+const TEAM_WIN_CONDITIONS: TeamWinCondition[] = [
+  'totalScore',
+  'firstPlaceCount',
+  'correctCount',
+  'averageScore',
+];
+
 export function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   const s = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+  // 旧バージョンのルーム（チーム戦フィールドなし）でも個人戦として動くよう既定値で補う
+  if (!BATTLE_MODES.includes(s.battleMode)) s.battleMode = 'solo';
+  s.teamCount = clampTeamCount(s.teamCount);
+  if (!TEAM_ASSIGN_MODES.includes(s.teamAssignMode)) s.teamAssignMode = 'balanced';
+  if (!TEAM_WIN_CONDITIONS.includes(s.teamWinCondition)) s.teamWinCondition = 'totalScore';
   s.maxRankCount = Number.isFinite(s.maxRankCount) ? Math.min(50, Math.max(1, Math.floor(s.maxRankCount))) : 3;
   if (!Array.isArray(s.customRankPoints)) s.customRankPoints = [...DEFAULT_SETTINGS.customRankPoints];
   if (!Array.isArray(s.allowedOperators) || s.allowedOperators.length === 0) {
