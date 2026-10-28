@@ -1,7 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
+  CORRECT_VARIANTS,
   getSoundSettings,
   playSe,
+  previewCorrect,
+  setCorrectVariant,
   setBgmEnabled,
   setBgmVolume,
   setSeEnabled,
@@ -163,10 +166,46 @@ export function AudioControls() {
                 label="効果音の音量"
               />
             </div>
+
+            <div className="hairline" />
+
+            {/* 正解音は好みが分かれるので、4種類から選べるようにしている */}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="jp text-[12px] font-bold text-slate-200">正解音</span>
+                <span className="label text-[9px] tracking-[.18em] text-cyan-200/50">
+                  {CORRECT_VARIANTS.find((v) => v.id === s.correct)?.note}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {CORRECT_VARIANTS.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    aria-pressed={s.correct === v.id}
+                    onClick={() => {
+                      setCorrectVariant(v.id);
+                      previewCorrect(v.id);
+                    }}
+                    className={cn(
+                      'label border py-1.5 text-[9px] tracking-[.12em] transition',
+                      s.correct === v.id
+                        ? 'border-cyan-300/80 bg-cyan-400/20 text-cyan-100 shadow-[0_0_16px_-6px_rgba(34,224,255,.9)]'
+                        : 'border-white/15 bg-white/[0.03] text-slate-400 hover:border-cyan-300/40 hover:text-cyan-200',
+                    )}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              <p className="jp mt-1.5 text-[9px] leading-relaxed text-slate-500">
+                タップで試聴＆決定（この端末のみ）
+              </p>
+            </div>
           </div>
 
           <p className="mt-3 border-t border-white/10 pt-2 text-[9px] leading-relaxed text-slate-500">
-            BGM: Komiku (CC0) / SE: Kenney Audio Pack (CC0)
+            BGM: Komiku / SE: Kenney (Interface・Sci-Fi・Audio Pack) — すべて CC0
             <br />
             設定はこの端末に保存されます。
           </p>
@@ -175,14 +214,22 @@ export function AudioControls() {
 
       <div className="flex items-center gap-2">
         {hint && !open && (
-          <span className="animate-fade-in rounded-sm border border-cyan-300/30 bg-black/70 px-2 py-1 text-[10px] tracking-wider text-cyan-200/80">
-            SOUND ON
+          <span
+            className={cn(
+              'animate-fade-in rounded-sm border px-2 py-1 text-[10px] tracking-wider',
+              muted
+                ? 'border-white/25 bg-black/70 text-slate-300'
+                : 'border-cyan-300/30 bg-black/70 text-cyan-200/80',
+            )}
+          >
+            {muted ? 'AUDIO OFF · TAP TO ENABLE' : 'AUDIO ON'}
           </span>
         )}
         <button
           type="button"
           onClick={() => {
-            playSe(muted ? 'correct' : 'ui');
+            if (muted) previewCorrect(s.correct);
+            else playSe('ui');
             setOpen((v) => !v);
           }}
           aria-label="オーディオ設定を開く"

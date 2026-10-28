@@ -16,6 +16,23 @@ const AUDIO_BASE =
 
 export type BgmName = 'menu' | 'battle' | 'result';
 
+/**
+ * 「正解」音のバリエーション。
+ * 好みが分かれるところなので、音源を複数同梱して設定パネルから試聴・選択できるようにしている。
+ *   impact … 金属の衝撃 + レーザー（硬質・テクノロジー寄り）
+ *   riser  … 上昇スイープ（システムアンロック感）
+ *   stair  … 上昇アルペジオ（デジタルの階段）
+ *   glitch … ノイズ・グリッチ系（攻めたサイバー）
+ */
+export type CorrectVariant = 'impact' | 'riser' | 'stair' | 'glitch';
+
+export const CORRECT_VARIANTS: { id: CorrectVariant; label: string; note: string }[] = [
+  { id: 'impact', label: 'IMPACT', note: '金属の衝撃＋レーザー' },
+  { id: 'riser', label: 'RISER', note: '上昇スイープ' },
+  { id: 'stair', label: 'STAIR', note: '上昇アルペジオ' },
+  { id: 'glitch', label: 'GLITCH', note: 'ノイズ／グリッチ' },
+];
+
 export type SeName =
   | 'ui'
   | 'hover'
@@ -43,6 +60,13 @@ const BGM_SRC: Record<BgmName, string> = {
   result: `${AUDIO_BASE}bgm/result.mp3`,
 };
 
+const CORRECT_SRC: Record<CorrectVariant, string> = {
+  impact: `${AUDIO_BASE}se/correct_impact.mp3`,
+  riser: `${AUDIO_BASE}se/correct_riser.mp3`,
+  stair: `${AUDIO_BASE}se/correct_stair.mp3`,
+  glitch: `${AUDIO_BASE}se/correct_glitch.mp3`,
+};
+
 const SE_SRC: Record<SeName, string> = {
   ui: `${AUDIO_BASE}se/ui_click.mp3`,
   hover: `${AUDIO_BASE}se/ui_hover.mp3`,
@@ -50,7 +74,7 @@ const SE_SRC: Record<SeName, string> = {
   tile: `${AUDIO_BASE}se/tile_select.mp3`,
   op: `${AUDIO_BASE}se/op_select.mp3`,
   calc: `${AUDIO_BASE}se/calc.mp3`,
-  correct: `${AUDIO_BASE}se/correct.mp3`,
+  correct: `${AUDIO_BASE}se/correct_impact.mp3`, // 実際は state.correct で解決する
   wrong: `${AUDIO_BASE}se/wrong.mp3`,
   tick: `${AUDIO_BASE}se/tick.mp3`,
   go: `${AUDIO_BASE}se/go.mp3`,
@@ -99,21 +123,28 @@ export interface SoundSettings {
   se: boolean;
   bgmVolume: number;
   seVolume: number;
+  /** 正解音の種類 */
+  correct: CorrectVariant;
 }
 
 const STORAGE_KEY = 'make10.audio';
 /** 保存フォーマットのバージョン（音量の既定値を変えたら上げる） */
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 
+/**
+ * 既定はミュート。音は右下の AUDIO SYSTEM から明示的にONにしてもらう
+ * （勝手に鳴らないほうが、職場や電車でも開きやすい）。
+ */
 const DEFAULT_STATE: SoundSettings = {
-  bgm: true,
-  se: true,
+  bgm: false,
+  se: false,
   bgmVolume: 0.75,
   seVolume: 0.85,
+  correct: 'impact',
 };
 
-/** 既定音量を上げた際の移行用（旧既定値のままの人だけ新しい既定値へ寄せる） */
-const LEGACY_DEFAULTS = { bgmVolume: 0.45, seVolume: 0.7 };
+/** 既定値を変えたときの移行用（旧既定値のままの人だけ新しい既定値へ寄せる） */
+const LEGACY_DEFAULTS = { bgm: true, se: true, bgmVolume: 0.45, seVolume: 0.7 };
 
 function loadState(): SoundSettings {
   try {
@@ -124,16 +155,24 @@ function loadState(): SoundSettings {
     const legacy = (raw as { v?: number }).v !== STORAGE_VERSION;
     const bgmVolume = clamp01(raw.bgmVolume ?? DEFAULT_STATE.bgmVolume);
     const seVolume = clamp01(raw.seVolume ?? DEFAULT_STATE.seVolume);
+    const bgm = typeof raw.bgm === 'boolean' ? raw.bgm : DEFAULT_STATE.bgm;
+    const se = typeof raw.se === 'boolean' ? raw.se : DEFAULT_STATE.se;
     return {
-      bgm: typeof raw.bgm === 'boolean' ? raw.bgm : DEFAULT_STATE.bgm,
-      se: typeof raw.se === 'boolean' ? raw.se : DEFAULT_STATE.se,
+      // 旧既定（=ON）のままだった人は、新しい既定（=ミュート）に合わせる
+      bgm: legacy && bgm === LEGACY_DEFAULTS.bgm ? DEFAULT_STATE.bgm : bgm,
+      se: legacy && se === LEGACY_DEFAULTS.se ? DEFAULT_STATE.se : se,
       // 旧既定のまま触っていない人だけ、新しい（大きめの）既定音量へ移行する
       bgmVolume: legacy && bgmVolume === LEGACY_DEFAULTS.bgmVolume ? DEFAULT_STATE.bgmVolume : bgmVolume,
       seVolume: legacy && seVolume === LEGACY_DEFAULTS.seVolume ? DEFAULT_STATE.seVolume : seVolume,
+      correct: isCorrectVariant(raw.correct) ? raw.correct : DEFAULT_STATE.correct,
     };
   } catch {
     return { ...DEFAULT_STATE };
   }
+}
+
+function isCorrectVariant(v: unknown): v is CorrectVariant {
+  return v === 'impact' || v === 'riser' || v === 'stair' || v === 'glitch';
 }
 
 function clamp01(v: number) {
@@ -189,17 +228,28 @@ export function setSeVolume(v: number) {
   update({ seVolume: clamp01(v) });
 }
 
+/** 正解音の種類を変える（設定パネルから試聴→選択） */
+export function setCorrectVariant(v: CorrectVariant) {
+  update({ correct: v });
+}
+
 /* ============================ SE ============================ */
 
-const seCache = new Map<SeName, HTMLAudioElement>();
+const seCache = new Map<string, HTMLAudioElement>();
 let unlocked = false;
 
+/** 実際に読み込むURL（正解音だけは選択中のバリアント） */
+function seSrcOf(name: SeName) {
+  return name === 'correct' ? CORRECT_SRC[state.correct] : SE_SRC[name];
+}
+
 function makeSe(name: SeName) {
-  let base = seCache.get(name);
+  const key = `${name}:${seSrcOf(name)}`;
+  let base = seCache.get(key);
   if (!base) {
-    base = new Audio(SE_SRC[name]);
+    base = new Audio(seSrcOf(name));
     base.preload = 'auto';
-    seCache.set(name, base);
+    seCache.set(key, base);
   }
   return base;
 }
@@ -215,6 +265,21 @@ export function playSe(name: SeName) {
     el.addEventListener('ended', () => el.remove(), { once: true });
   } catch {
     /* 再生できなくてもゲーム進行には影響しない */
+  }
+}
+
+/**
+ * 正解音の試聴。ON/OFF や音量設定に関係なく、押した人の操作で必ず鳴らす
+ * （設定画面で「どれにするか」を選ぶための明示的な再生なので）。
+ */
+export function previewCorrect(variant: CorrectVariant) {
+  try {
+    const el = new Audio(CORRECT_SRC[variant]);
+    el.volume = Math.min(1, Math.max(0.55, state.seVolume));
+    void el.play().catch(() => undefined);
+    el.addEventListener('ended', () => el.remove(), { once: true });
+  } catch {
+    /* 再生できなくても致命的ではない */
   }
 }
 
