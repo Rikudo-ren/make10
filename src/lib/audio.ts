@@ -8,7 +8,11 @@
  * - ブラウザの自動再生制限があるため、最初のユーザー操作（タップ/キー）で unlock する。
  * - ON/OFF と音量は localStorage に保存され、全画面で共有される。
  */
-const AUDIO_BASE = `${import.meta.env.BASE_URL}audio/`;
+// サブディレクトリ配信でも壊れないよう、HTML の位置からの相対URLで解決する
+const AUDIO_BASE =
+  typeof document !== 'undefined'
+    ? new URL('audio/', document.baseURI).href
+    : `${import.meta.env.BASE_URL}audio/`;
 
 export type BgmName = 'menu' | 'battle' | 'result';
 
