@@ -121,7 +121,10 @@ export default function App() {
       {!solo && room && <ChatOverlay ctrl={ctrl} />}
       {!solo && room && <ChatDock ctrl={ctrl} />}
       {!solo && <RoomHealthNotice ctrl={ctrl} />}
-      <AudioControls />
+      {/* 画面（トップ / 練習 / ロビー / 対戦 / 結果）が変わったら AUDIO パネルを閉じる */}
+      <AudioControls
+        screenKey={solo ? 'solo' : roomId && room ? `${roomId}:${room.status}` : 'top'}
+      />
 
       {showPreparing && (
         <div className="animate-fade-in fixed inset-0 z-[96] grid place-items-center bg-black/85 p-6 backdrop-blur-md">

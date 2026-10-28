@@ -1,10 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  CORRECT_VARIANTS,
   getSoundSettings,
   playSe,
-  previewCorrect,
-  setCorrectVariant,
   setBgmEnabled,
   setBgmVolume,
   setSeEnabled,
@@ -87,11 +84,41 @@ function Switch({
 /**
  * BGM / SE の ON・OFF と音量を切り替えるフローティングパネル。
  * 端末ごとの設定（localStorage）なので、全員の画面に影響はしない。
+ *
+ * `screenKey`（トップ / ひとり練習 / ルームID + ステータス）が変わったら
+ * パネルを自動的に閉じる。ボタン自体は常に残す（毎回開き直せるように）。
  */
-export function AudioControls() {
+export function AudioControls({ screenKey }: { screenKey?: string }) {
   const s = useSoundSettings();
   const [open, setOpen] = useState(false);
   const [hint, setHint] = useState(true);
+
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // 画面が切り替わったら開きっぱなしのパネルを閉じる（初回マウント時は除く）
+  const lastScreen = useRef(screenKey);
+  useEffect(() => {
+    if (lastScreen.current === screenKey) return;
+    lastScreen.current = screenKey;
+    setOpen(false);
+  }, [screenKey]);
+
+  // パネルの外側をタップ／Esc でも閉じられるようにする
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   // 最初のうちだけ「音が鳴ります」のヒントを出す
   useEffect(() => {
@@ -102,7 +129,10 @@ export function AudioControls() {
   const muted = !s.bgm && !s.se;
 
   return (
-    <div className="fixed right-3 bottom-3 z-[95] flex flex-col items-end gap-2 print:hidden">
+    <div
+      ref={wrapRef}
+      className="fixed right-3 bottom-3 z-[95] flex flex-col items-end gap-2 print:hidden"
+    >
       {open && (
         <div className="card animate-float-up w-[268px] p-4">
           <div className="mb-3 flex items-center justify-between">
@@ -145,7 +175,12 @@ export function AudioControls() {
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="jp text-[12px] font-bold text-slate-200">効果音</span>
+                <span className="jp text-[12px] font-bold text-slate-200">
+                  効果音
+                  <span className="ml-1.5 text-[9px] font-normal text-slate-500">
+                    （ONでBGMもON）
+                  </span>
+                </span>
                 <Switch
                   on={s.se}
                   label="効果音のON/OFF"
@@ -167,41 +202,6 @@ export function AudioControls() {
               />
             </div>
 
-            <div className="hairline" />
-
-            {/* 正解音は好みが分かれるので、4種類から選べるようにしている */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="jp text-[12px] font-bold text-slate-200">正解音</span>
-                <span className="label text-[9px] tracking-[.18em] text-cyan-200/50">
-                  {CORRECT_VARIANTS.find((v) => v.id === s.correct)?.note}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 gap-1">
-                {CORRECT_VARIANTS.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    aria-pressed={s.correct === v.id}
-                    onClick={() => {
-                      setCorrectVariant(v.id);
-                      previewCorrect(v.id);
-                    }}
-                    className={cn(
-                      'label border py-1.5 text-[9px] tracking-[.12em] transition',
-                      s.correct === v.id
-                        ? 'border-cyan-300/80 bg-cyan-400/20 text-cyan-100 shadow-[0_0_16px_-6px_rgba(34,224,255,.9)]'
-                        : 'border-white/15 bg-white/[0.03] text-slate-400 hover:border-cyan-300/40 hover:text-cyan-200',
-                    )}
-                  >
-                    {v.label}
-                  </button>
-                ))}
-              </div>
-              <p className="jp mt-1.5 text-[9px] leading-relaxed text-slate-500">
-                タップで試聴＆決定（この端末のみ）
-              </p>
-            </div>
           </div>
 
           <p className="mt-3 border-t border-white/10 pt-2 text-[9px] leading-relaxed text-slate-500">
@@ -228,8 +228,7 @@ export function AudioControls() {
         <button
           type="button"
           onClick={() => {
-            if (muted) previewCorrect(s.correct);
-            else playSe('ui');
+            playSe('ui');
             setOpen((v) => !v);
           }}
           aria-label="オーディオ設定を開く"
