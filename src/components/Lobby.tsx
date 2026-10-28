@@ -15,7 +15,7 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
   const canStart = isGM && players.length >= 1 && (!settings.requireAllReady || allReady);
 
   return (
-    <div className="relative mx-auto w-full max-w-5xl px-4 py-6">
+    <div className="relative mx-auto w-full max-w-5xl px-4 pt-6 pb-24 sm:pb-8">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
         <div className="drift absolute -left-10 top-24 h-64 w-64 rounded-full bg-indigo-600/15 blur-3xl" />

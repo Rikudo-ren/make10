@@ -10,7 +10,7 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
   const maxScore = Math.max(1, ...ranking.map((p) => p.score ?? 0));
 
   return (
-    <div className="relative mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-4 py-8">
+    <div className="relative mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-4 pt-8 pb-28 sm:pb-10">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
         <div className="drift absolute -right-10 top-16 h-64 w-64 rounded-full bg-amber-500/15 blur-3xl" />

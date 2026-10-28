@@ -15,6 +15,9 @@ import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } fro
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
+/** 未正解者が全員パスしてからラウンド確定するまでの猶予（パス取り消し・解答の受付） */
+const PASS_GRACE_MS = 2500;
+
 function randomCode(len = 6) {
   let out = '';
   for (let i = 0; i < len; i++) out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
@@ -336,6 +339,8 @@ export function useRoom() {
       const code = roomIdRef.current;
       const data = roomRef.current;
       if (!code || !data || !uid || !data.currentRound) return;
+      // 判定中・終了後に入ってきた解答は無視する（次のラウンドを汚さない）
+      if (data.status !== 'playing') return;
       const r = data.currentRound;
       // 各端末の経過時間（カウントダウン3秒分は除外）で順位付け
       const COUNTDOWN_MS = 3000;
@@ -361,6 +366,7 @@ export function useRoom() {
     const code = roomIdRef.current;
     const data = roomRef.current;
     if (!code || !data || !uid || !data.currentRound) return;
+    if (data.status !== 'playing') return;
     const r = data.currentRound;
     try {
       await set(ref(db, `rooms/${code}/answers/${r.roundIndex}/${uid}`), {
@@ -370,6 +376,27 @@ export function useRoom() {
         adjustedElapsedMs: 0,
         passed: true,
       });
+    } catch {
+      /* noop */
+    }
+  }, [uid]);
+
+  /**
+   * パスの取り消し。
+   * パスは「解けないときの意思表示」であって解答権を失うものではないので、
+   * 押したあとでも式を作って解答できる（解答するとパスは自動で上書きされる）。
+   * ここでは「パスしたけど、やっぱり自分で解く」ためにパス記録だけ消す。
+   */
+  const cancelPass = useCallback(async () => {
+    const code = roomIdRef.current;
+    const data = roomRef.current;
+    if (!code || !data || !uid || !data.currentRound) return;
+    if (data.status !== 'playing') return;
+    const r = data.currentRound;
+    const mine = data.answers?.[String(r.roundIndex)]?.[uid];
+    if (!mine?.passed) return;
+    try {
+      await remove(ref(db, `rooms/${code}/answers/${r.roundIndex}/${uid}`));
     } catch {
       /* noop */
     }
@@ -468,6 +495,12 @@ export function useRoom() {
     const code = roomIdRef.current;
     if (!code || !isGM) return;
     await set(ref(db, `rooms/${code}/status`), 'lobby');
+    // 再戦に入るタイミングでチャット履歴を消す（DBに残さない方針）
+    try {
+      await remove(ref(db, `chats/${code}`));
+    } catch {
+      /* ルールで消せない設定でもゲーム進行には影響させない */
+    }
   }, [isGM]);
 
   // ===== GM判定エンジン（定員制 & 未正解者全パスで即終了） =====
@@ -481,11 +514,13 @@ export function useRoom() {
     if (lastStateKeyRef.current !== stateKey) {
       lastStateKeyRef.current = stateKey;
       clearTimer('timeup');
+      clearTimer('passEnd');
     }
     if (!isGM || !room || !roomId) return;
 
     if (room.status !== 'playing' || !room.currentRound) {
       clearTimer('timeup');
+      clearTimer('passEnd');
       return;
     }
     const settings = normalizeSettings(room.settings);
@@ -519,9 +554,17 @@ export function useRoom() {
 
     if (allUnsolvedPassed) {
       clearTimer('timeup');
-      finalizeRound(correctIds.length > 0 ? 'answered' : 'passed');
+      // パスは取り消せる（パス後にひらめいて解答する人もいる）ので、
+      // 全員パスでも少しだけ待ってから確定する。その間に解答/取り消しが入れば中止。
+      if (!timersRef.current['passEnd']) {
+        timersRef.current['passEnd'] = setTimeout(() => {
+          timersRef.current['passEnd'] = null;
+          finalizeRound(correctIds.length > 0 ? 'answered' : 'passed');
+        }, PASS_GRACE_MS);
+      }
       return;
     }
+    clearTimer('passEnd');
 
     // 3) 時間切れ監視（制限時間ありの場合のみ）
     if (!settings.unlimitedTime && !timersRef.current['timeup']) {
@@ -561,6 +604,7 @@ export function useRoom() {
     startMatch,
     submitAnswer,
     passRound,
+    cancelPass,
     nextRound,
     backToLobby,
   };

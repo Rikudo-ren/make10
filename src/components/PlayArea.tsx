@@ -15,6 +15,8 @@ interface Props {
   /** formula: 表示用の式文字列 / key: 解答例との照合に使う等価判定キー */
   onSolved: (formula: string, key: string) => void;
   onPass?: () => void;
+  /** パスの取り消し（パス後も解答できるので、明示的に戻せるようにする） */
+  onCancelPass?: () => void;
   passed?: boolean;
   isCountdown?: boolean;
 }
@@ -29,6 +31,7 @@ export function PlayArea({
   penaltyMode,
   onSolved,
   onPass,
+  onCancelPass,
   passed,
   isCountdown,
 }: Props) {
@@ -36,6 +39,7 @@ export function PlayArea({
   const [lockUntil, setLockUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [wrongShake, setWrongShake] = useState(0);
+  const [confirmReset, setConfirmReset] = useState(false);
   const solvedRef = useRef<string | null>(null);
   const key = numbers.join(',') + '|' + target;
 
@@ -43,12 +47,20 @@ export function PlayArea({
     solvedRef.current = null;
     setLockUntil(0);
     setWrongShake(0);
+    setConfirmReset(false);
   }, [key]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(id);
   }, []);
+
+  // 「全リセット」は誤タップ防止のため、押してから4秒以内にもう一度押すと実行
+  useEffect(() => {
+    if (!confirmReset) return;
+    const id = setTimeout(() => setConfirmReset(false), 4000);
+    return () => clearTimeout(id);
+  }, [confirmReset]);
 
   useEffect(() => {
     if (!board.finished || board.finalValue === null) return;
@@ -65,7 +77,8 @@ export function PlayArea({
   }, [board.finished, board.finalFormula, board.finalValue, target]);
 
   const lockRemain = Math.max(0, lockUntil - now);
-  const locked = !!disabled || lockRemain > 0 || !!isCountdown || !!passed;
+  // パス中でも解答できるように、パスはロック条件に含めない
+  const locked = !!disabled || lockRemain > 0 || !!isCountdown;
   const wrongFinished =
     board.finished && board.finalValue !== null && Math.abs(board.finalValue - target) >= EPS;
   const penaltyText = penaltyMode === 'lock' ? '誤答時は5秒間入力ロック' : 'ペナルティなし';
@@ -102,11 +115,26 @@ export function PlayArea({
           </div>
         </div>
         {wrongFinished && !isCountdown && (
-          <div className="mt-2 text-xs font-bold text-rose-300">
-            結果 {displayValue(board.finalValue!)} … {target} になりませんでした
-            {lockRemain > 0 && (
-              <span className="text-rose-300/70"> / あと {(lockRemain / 1000).toFixed(0)}秒で解除</span>
-            )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-rose-300">
+              結果 {displayValue(board.finalValue!)} … {target} になりませんでした
+              {lockRemain > 0 && (
+                <span className="text-rose-300/70"> / あと {(lockRemain / 1000).toFixed(0)}秒で解除</span>
+              )}
+            </span>
+            <button
+              type="button"
+              disabled={locked}
+              onClick={board.reset}
+              className="rounded-full border border-rose-300/40 bg-rose-500/15 px-3 py-1 text-[11px] font-bold text-rose-100 transition hover:bg-rose-500/25 disabled:opacity-40"
+            >
+              ⟲ 式を消してやり直す
+            </button>
+          </div>
+        )}
+        {passed && !isCountdown && (
+          <div className="mt-2 text-[11px] font-bold text-slate-400">
+            ⏭ パス中 — ひらめいたら、このまま式を作って解答できます
           </div>
         )}
       </div>
@@ -152,7 +180,7 @@ export function PlayArea({
         })}
       </div>
 
-      {/* 操作ボタン */}
+      {/* 操作（式の編集） */}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="soft" onClick={board.undo} disabled={!board.canUndo || locked} className="px-4">
           ↩ 1手戻す
@@ -160,35 +188,80 @@ export function PlayArea({
         <Button variant="soft" onClick={board.redo} disabled={!board.canRedo || locked} className="px-4">
           やり直す →
         </Button>
-        <div className="grow" />
-        {onPass && (
-          <Button
-            variant="ghost"
-            onClick={onPass}
-            disabled={!!passed || !!disabled || !!isCountdown}
-            title="解けない場合はパスできます。未正解者が全員パスするとラウンド終了になります"
-          >
-            {passed ? '⏭ パス済み' : '⏭ パスする'}
-          </Button>
-        )}
-        <Button
-          variant="danger"
-          onClick={board.reset}
-          disabled={locked}
-          className="px-4"
-          title="出題時の状態まで一気に戻します"
-        >
-          ⟲ 全リセット
-        </Button>
       </div>
 
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
-        <span>
-          <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
-            Backspace
-          </kbd>
-          <span className="ml-1.5">でも1手戻せます</span>
-        </span>
+      {/* パス: 「全リセット」とは別ブロック・別の見た目にして誤タップを防ぐ */}
+      {onPass && (
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() => (passed ? onCancelPass?.() : onPass())}
+            disabled={!!disabled || !!isCountdown || (!!passed && !onCancelPass)}
+            className={cn(
+              'w-full rounded-2xl border-2 border-dashed px-4 py-3 text-sm font-bold transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-40',
+              passed
+                ? 'border-slate-500/40 bg-white/5 text-slate-300 hover:bg-white/10'
+                : 'border-white/15 bg-white/[0.03] text-slate-200 hover:border-amber-300/50 hover:bg-amber-400/10 hover:text-amber-100',
+            )}
+          >
+            {passed ? '↩ パスを取り消す' : '⏭ この問題をパスする'}
+          </button>
+          <p className="mt-1.5 text-center text-[11px] text-slate-500">
+            {passed
+              ? 'パス中でも解答できます。正解するとパスは自動で取り消されます'
+              : '解けなくても大丈夫。パスしても、あとから解答すればOK'}
+          </p>
+        </div>
+      )}
+
+      {/* ここで区切って、全リセットは右下のはじに小さく置く（パスと離す） */}
+      <div>
+        <div className="glass-divider mb-2" />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-500">
+            <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
+              Backspace
+            </kbd>
+            <span className="ml-1.5">でも1手戻せます</span>
+          </span>
+          <div className="flex items-center justify-end gap-2">
+            {confirmReset ? (
+              <>
+                <span className="text-[11px] font-bold text-rose-200">本当にリセット？</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    board.reset();
+                    setConfirmReset(false);
+                  }}
+                  className="rounded-lg bg-rose-500/90 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-rose-500"
+                >
+                  リセット
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(false)}
+                  className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-bold text-slate-300 transition hover:bg-white/10"
+                >
+                  やめる
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmReset(true)}
+                disabled={locked}
+                title="出題時の状態まで一気に戻します（誤タップ防止のため確認あり）"
+                className="rounded-lg px-2 py-1.5 text-[11px] font-bold text-slate-500 transition hover:bg-white/8 hover:text-slate-200 disabled:opacity-40"
+              >
+                ⟲ 全リセット
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end text-[11px] text-slate-500">
         <span className="font-bold">⚠ {penaltyText}</span>
       </div>
 

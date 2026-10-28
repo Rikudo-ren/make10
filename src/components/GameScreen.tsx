@@ -183,7 +183,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const showMask = isCountdown || transitioning;
 
   return (
-    <div className="relative mx-auto w-full max-w-6xl px-4 py-5" data-tick={tick}>
+    <div className="relative mx-auto w-full max-w-6xl px-4 pt-5 pb-24 sm:pb-8" data-tick={tick}>
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
         <div className="drift-slow absolute -right-10 top-10 h-64 w-64 rounded-full bg-fuchsia-600/15 blur-3xl" />
@@ -259,26 +259,26 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </div>
           )}
 
+          {/* パス中でも解答できるようにする（パスは解答権を失う操作ではない） */}
           <PlayArea
             numbers={r.numbers}
             target={r.target}
             allowedOperators={settings.allowedOperators}
             integerOnly={settings.integerOnly}
             penaltyMode={settings.penaltyMode}
-            disabled={judging || iAmSolved || !!myAnswer?.passed}
+            disabled={judging || iAmSolved}
             disabledReason={
               judging
                 ? 'ラウンド終了！結果を表示中です'
                 : iAmSolved
                   ? `🎉 正解完了（${myLiveRank}位抜け！式: ${myAnswer?.formula}）他のプレイヤーの解答を待っています…`
-                  : myAnswer?.passed
-                    ? '⏭ パスしました。他の未正解者が全員パスするか、定員に達すると次の問題へ進みます'
-                    : undefined
+                  : undefined
             }
             passed={!!myAnswer?.passed}
             isCountdown={showMask}
             onSolved={(f, k) => ctrl.submitAnswer(f, k)}
             onPass={() => ctrl.passRound()}
+            onCancelPass={() => ctrl.cancelPass()}
           />
         </Card>
 
@@ -359,8 +359,9 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center text-xs text-slate-300">
                   <div className="font-bold text-slate-200">⏭ パス中</div>
                   <div className="mt-1 text-[11px] text-slate-400">
-                    まだ解いている未正解者が全員パスすれば終了します。<br />
-                    ひらめいたらパス後も解き直してOK！
+                    ひらめいたら、そのまま式を作って解答できます（パスは自動で取り消されます）。
+                    <br />
+                    未正解者が全員パスするか、定員に達すると次の問題へ進みます。
                   </div>
                 </div>
               ) : (
