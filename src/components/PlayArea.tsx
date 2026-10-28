@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBoard } from '../lib/board';
 import { EPS, OP_SYMBOL, displayValue, type Op } from '../lib/solver';
-import { Button, ConfirmDialog } from './ui';
+import { Button } from './ui';
 import { cn } from '../utils/cn';
 
 interface Props {
@@ -46,14 +46,12 @@ export function PlayArea({
   const [lockState, setLockState] = useState<{ key: string; until: number }>({ key: '', until: 0 });
   const [now, setNow] = useState(Date.now());
   const [wrongShake, setWrongShake] = useState(0);
-  const [confirmPass, setConfirmPass] = useState(false);
   const solvedRef = useRef<string | null>(null);
   const resumeRequestedRef = useRef(false);
 
   useEffect(() => {
     solvedRef.current = null;
     setWrongShake(0);
-    setConfirmPass(false);
   }, [boardKey]);
 
   useEffect(() => {
@@ -181,7 +179,7 @@ export function PlayArea({
         })}
       </div>
 
-      {/* 操作ボタン（全リセットはパスと離した左上のまとまりに配置） */}
+      {/* 操作ボタン: 1手戻す / やり直す は左、全リセットは右端（パスはこの下の行の左側） */}
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="soft"
@@ -211,46 +209,37 @@ export function PlayArea({
         </Button>
       </div>
 
-      {/* パスは「全リセット」と混同しないよう、区切り線を入れて別ブロックに配置 */}
+      {/* パス: 画面の左側に置き、全リセット（右下）からできるだけ離す。確認ダイアログは出さない */}
       {onPass && (
-        <div className="mt-1 border-t border-white/10 pt-4">
-        <div className="rounded-2xl border border-amber-300/20 bg-amber-400/[0.04] p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs font-black tracking-wide text-amber-200">
-                <span aria-hidden>⏭</span>
-                <span>{passed ? 'この問題はパスしました' : 'この問題をあきらめる'}</span>
-              </div>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
-                {passed
-                  ? 'パス中でも解答OK。数字をタップするとパスを取り消して解答に戻れます'
-                  : '未正解の人が全員パスするとラウンド終了。押しただけでは解答権は失われません'}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {passed ? (
-                <Button
-                  variant="soft"
-                  className="px-3 py-2 text-xs"
-                  disabled={!onCancelPass}
-                  onClick={onCancelPass}
-                  title="ラウンドが終了していなければ解答に戻れます"
-                >
-                  ↩ パスを取り消す
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  className="border border-white/10 px-3 py-2 text-xs text-slate-300"
-                  disabled={!canRequestPass}
-                  onClick={() => setConfirmPass(true)}
-                >
-                  ⏭ パスする
-                </Button>
-              )}
-            </div>
+        <div className="mt-1 border-t border-white/10 pt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            {passed ? (
+              <Button
+                variant="soft"
+                className="px-3 py-2 text-xs"
+                disabled={!onCancelPass}
+                onClick={onCancelPass}
+                title="ラウンドが終了していなければ解答に戻れます"
+              >
+                ↩ パスを取り消す
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="border border-white/10 px-3 py-2 text-xs text-slate-300"
+                disabled={!canRequestPass}
+                onClick={onPass}
+                title="未正解の人が全員パスするとラウンド終了になります"
+              >
+                ⏭ パスする
+              </Button>
+            )}
+            <span className="text-[11px] leading-relaxed text-slate-500">
+              {passed
+                ? 'パス中でも解答OK（数字を触ると取り消し）'
+                : '解けないときはパス（押しただけでは解答権は失われません）'}
+            </span>
           </div>
-        </div>
         </div>
       )}
 
@@ -269,28 +258,6 @@ export function PlayArea({
           {disabledReason}
         </div>
       )}
-
-      <ConfirmDialog
-        open={confirmPass}
-        title="この問題をパスしますか？"
-        description={
-          <>
-            パスすると「未正解の人が全員パスしたら終了」の判定対象になります。
-            <br />
-            パスしたあとでも<b className="text-amber-300">解答はできます</b>（数字を触るとパスを取り消します）。
-            <span className="mt-1 block text-xs text-slate-400">
-              全員パスで終了するまで少し猶予があるので、誤タップも取り消せます
-            </span>
-          </>
-        }
-        confirmLabel="パスする"
-        cancelLabel="やめる"
-        onConfirm={() => {
-          setConfirmPass(false);
-          onPass?.();
-        }}
-        onCancel={() => setConfirmPass(false)}
-      />
     </div>
   );
 }

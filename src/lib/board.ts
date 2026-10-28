@@ -128,12 +128,14 @@ export function useBoard(numbers: number[], integerOnly: boolean, resetToken?: s
   }, [slots]);
 
   const reset = useCallback(() => {
-    if (undoStack.length === 0 && slots.every((s) => s.tile !== null)) return;
+    // 盤面を戻す必要がなくても、選択中の数字と選択している演算子は必ず解除する
+    const nothingToRestore = undoStack.length === 0 && slots.every((s) => s.tile !== null);
+    setSelectedSlot(null);
+    setPendingOp(null);
+    if (nothingToRestore) return;
     setUndoStack((s) => [...s, slots]);
     setRedoStack([]);
     setSlots(makeSlots(numbers));
-    setSelectedSlot(null);
-    setPendingOp(null);
     setNextId(numbers.length + 1);
   }, [numbers, slots, undoStack.length]);
 
