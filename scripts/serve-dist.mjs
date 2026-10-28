@@ -33,7 +33,14 @@ createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const path = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
   let file = join(ROOT, path);
-  if (!existsSync(file) || statSync(file).isDirectory()) file = join(ROOT, 'index.html');
+  if (!existsSync(file) || statSync(file).isDirectory()) {
+    // 拡張子付きのリクエスト（音声・画像など）は SPA フォールバックせず 404 を返す
+    if (/\.[a-z0-9]+$/i.test(path)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('not found');
+    }
+    file = join(ROOT, 'index.html');
+  }
   if (!existsSync(file)) file = join(ROOT, 'index.html');
 
   const ext = extname(file).toLowerCase();
