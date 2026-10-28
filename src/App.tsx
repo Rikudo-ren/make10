@@ -7,6 +7,7 @@ import { FinalResult } from './components/FinalResult';
 import { SoloScreen } from './components/SoloScreen';
 import { RoomHealthNotice } from './components/RoomHealthNotice';
 import { ChatOverlay } from './components/ChatOverlay';
+import { ChatDock } from './components/ChatDock';
 import { AudioControls } from './components/AudioControls';
 import { Spinner } from './components/ui';
 import { playSe, resumeBgmIfNeeded, setBgm, unlockAudio } from './lib/audio';
@@ -118,6 +119,7 @@ export default function App() {
       <div className="relative z-[1]">{content}</div>
 
       {!solo && room && <ChatOverlay ctrl={ctrl} />}
+      {!solo && room && <ChatDock ctrl={ctrl} />}
       {!solo && <RoomHealthNotice ctrl={ctrl} />}
       <AudioControls />
 

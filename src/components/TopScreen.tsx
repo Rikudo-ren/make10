@@ -223,7 +223,7 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
 
       <div className="relative flex flex-col items-center gap-2 text-center">
         <div className="num flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] tracking-[.2em] text-slate-600">
-          <span>BGM: FreePD (CC0)</span>
+          <span>BGM: Komiku (CC0)</span>
           <span className="text-slate-700">/</span>
           <span>SE: Kenney Audio Pack (CC0)</span>
         </div>

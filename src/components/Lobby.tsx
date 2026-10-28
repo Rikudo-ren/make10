@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
 import { SettingsPanel } from './SettingsPanel';
-import { ChatPanel } from './ChatPanel';
 import { Button, Card, ConfirmDialog, SectionTitle } from './ui';
 import { IconCheck, IconCopy, IconCrown, IconGear, IconPlay, IconUsers } from './icons';
 import { playSe } from '../lib/audio';
@@ -141,8 +140,6 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
               </p>
             )}
           </Card>
-
-          <ChatPanel ctrl={ctrl} />
         </div>
 
         <Card>

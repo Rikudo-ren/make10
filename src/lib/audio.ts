@@ -1,34 +1,14 @@
 /**
  * サウンドエンジン（BGM / SE）
  *
- * - 音源はすべて CC0（パブリックドメイン）の外部アセットを同梱しています。
- *   BGM: FreePD.com (CC0) / SE: Kenney.nl "Audio Pack" (CC0)
- * - ブラウザの自動再生制限があるため、最初のユーザー操作（タップ/キー）で unlock します。
- * - ON/OFF と音量は localStorage に保存され、全画面で共有されます。
+ * - 音源はすべて CC0（パブリックドメイン）の外部アセット。
+ *   BGM: Komiku（Game Music Pack / chosic.com 収録・CC0）
+ *   SE : Kenney.nl "Audio Pack"（CC0）
+ *   実体は public/audio/ に置き、必要なときに遅延読み込みする（本体のJSを軽く保つ）
+ * - ブラウザの自動再生制限があるため、最初のユーザー操作（タップ/キー）で unlock する。
+ * - ON/OFF と音量は localStorage に保存され、全画面で共有される。
  */
-import menuBgm from '../assets/audio/bgm/menu.mp3';
-import battleBgm from '../assets/audio/bgm/battle.mp3';
-import resultBgm from '../assets/audio/bgm/result.mp3';
-
-import seCalc from '../assets/audio/se/calc.mp3';
-import seChatRecv from '../assets/audio/se/chat_recv.mp3';
-import seChatSend from '../assets/audio/se/chat_send.mp3';
-import seCorrect from '../assets/audio/se/correct.mp3';
-import seFinish from '../assets/audio/se/finish.mp3';
-import seGo from '../assets/audio/se/go.mp3';
-import seJoin from '../assets/audio/se/join.mp3';
-import seLaser from '../assets/audio/se/laser.mp3';
-import seLeave from '../assets/audio/se/leave.mp3';
-import seOp from '../assets/audio/se/op_select.mp3';
-import sePass from '../assets/audio/se/pass.mp3';
-import seRoundEnd from '../assets/audio/se/round_end.mp3';
-import seStart from '../assets/audio/se/start.mp3';
-import seTick from '../assets/audio/se/tick.mp3';
-import seTile from '../assets/audio/se/tile_select.mp3';
-import seUi from '../assets/audio/se/ui_click.mp3';
-import seHover from '../assets/audio/se/ui_hover.mp3';
-import seToggle from '../assets/audio/se/ui_toggle.mp3';
-import seWrong from '../assets/audio/se/wrong.mp3';
+const AUDIO_BASE = `${import.meta.env.BASE_URL}audio/`;
 
 export type BgmName = 'menu' | 'battle' | 'result';
 
@@ -54,32 +34,35 @@ export type SeName =
   | 'laser';
 
 const BGM_SRC: Record<BgmName, string> = {
-  menu: menuBgm,
-  battle: battleBgm,
-  result: resultBgm,
+  menu: `${AUDIO_BASE}bgm/menu.mp3`,
+  battle: `${AUDIO_BASE}bgm/battle.mp3`,
+  result: `${AUDIO_BASE}bgm/result.mp3`,
 };
 
 const SE_SRC: Record<SeName, string> = {
-  ui: seUi,
-  hover: seHover,
-  toggle: seToggle,
-  tile: seTile,
-  op: seOp,
-  calc: seCalc,
-  correct: seCorrect,
-  wrong: seWrong,
-  tick: seTick,
-  go: seGo,
-  roundEnd: seRoundEnd,
-  finish: seFinish,
-  chatSend: seChatSend,
-  chatRecv: seChatRecv,
-  join: seJoin,
-  leave: seLeave,
-  start: seStart,
-  pass: sePass,
-  laser: seLaser,
+  ui: `${AUDIO_BASE}se/ui_click.mp3`,
+  hover: `${AUDIO_BASE}se/ui_hover.mp3`,
+  toggle: `${AUDIO_BASE}se/ui_toggle.mp3`,
+  tile: `${AUDIO_BASE}se/tile_select.mp3`,
+  op: `${AUDIO_BASE}se/op_select.mp3`,
+  calc: `${AUDIO_BASE}se/calc.mp3`,
+  correct: `${AUDIO_BASE}se/correct.mp3`,
+  wrong: `${AUDIO_BASE}se/wrong.mp3`,
+  tick: `${AUDIO_BASE}se/tick.mp3`,
+  go: `${AUDIO_BASE}se/go.mp3`,
+  roundEnd: `${AUDIO_BASE}se/round_end.mp3`,
+  finish: `${AUDIO_BASE}se/finish.mp3`,
+  chatSend: `${AUDIO_BASE}se/chat_send.mp3`,
+  chatRecv: `${AUDIO_BASE}se/chat_recv.mp3`,
+  join: `${AUDIO_BASE}se/join.mp3`,
+  leave: `${AUDIO_BASE}se/leave.mp3`,
+  start: `${AUDIO_BASE}se/start.mp3`,
+  pass: `${AUDIO_BASE}se/pass.mp3`,
+  laser: `${AUDIO_BASE}se/laser.mp3`,
 };
+
+/** unlock 直後に先読みしておく効果音（よく使うものだけ） */
+const PRELOAD_SE: SeName[] = ['ui', 'toggle', 'tile', 'op', 'correct', 'wrong', 'tick', 'chatRecv'];
 
 /** SE ごとの音量バランス（聞こえ方を揃える） */
 const SE_GAIN: Record<SeName, number> = {
@@ -320,7 +303,7 @@ export function unlockAudio() {
   } catch {
     /* noop */
   }
-  for (const name of Object.keys(SE_SRC) as SeName[]) makeSe(name);
+  for (const name of PRELOAD_SE) makeSe(name);
   if (pendingBgm && state.bgm) startBgmNow(pendingBgm);
 }
 

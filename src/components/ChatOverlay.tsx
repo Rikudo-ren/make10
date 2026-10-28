@@ -10,8 +10,9 @@ interface FloatItem {
   hue: number;
 }
 
-const LIFETIME_MS = 6200;
-const MAX_STACK = 2;
+/** 1件が「下から上へゆっくり流れて消える」までの時間 */
+const LIFETIME_MS = 10000;
+const MAX_STACK = 3;
 
 function hueOf(uid: string) {
   let h = 0;
@@ -21,8 +22,8 @@ function hueOf(uid: string) {
 
 /**
  * ゴッドフィールド風のコメント表示。
- * チャットが送られると、全員の画面の下から「名前＋コメント」が大きく流れて上がる。
- * （ログは ChatPanel 側に残るので、見逃しても後から確認できる）
+ * コメントが来ると、全員の画面の下から「名前＋コメント」がゆっくり上へ流れていく。
+ * 見逃してもログ（COMMS のログボタン）からいつでも読み返せる。
  */
 export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
   const { room, uid } = ctrl;
@@ -36,7 +37,7 @@ export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
       .filter(([, m]) => m && typeof m.text === 'string' && m.text.length > 0)
       .sort((a, b) => (a[1].at ?? 0) - (b[1].at ?? 0));
 
-    // 入室した瞬间に過去ログを全部流さない（初回は既読扱い）
+    // 入室した瞬間に過去ログを全部流さない（初回は既読扱い）
     if (seenRef.current === null) {
       seenRef.current = new Set(entries.map(([id]) => id));
       return;
@@ -55,9 +56,7 @@ export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
     }));
 
     setItems((prev) => [...prev, ...added].slice(-MAX_STACK));
-
-    const mine = added.some((a) => a.mine);
-    playSe(mine ? 'chatSend' : 'chatRecv');
+    playSe(added.some((a) => a.mine) ? 'chatSend' : 'chatRecv');
 
     for (const item of added) {
       const t = setTimeout(() => {
@@ -77,15 +76,15 @@ export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[14vh] z-[25] flex flex-col items-center gap-2 px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[12vh] z-[25] flex flex-col items-center gap-2 px-4">
       {items.map((it) => (
         <div
           key={it.key}
           className="flex w-full max-w-2xl justify-center"
-          style={{ animation: `chat-rise ${LIFETIME_MS}ms cubic-bezier(.16,.84,.3,1) forwards` }}
+          style={{ animation: `chat-drift ${LIFETIME_MS}ms linear forwards` }}
         >
           <div className="relative max-w-full">
-            {/* 背景の斜めプレート */}
+            {/* 斜めのプレート */}
             <div
               className="absolute inset-0 border border-white/15"
               style={{
@@ -97,13 +96,9 @@ export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
             />
             <div
               className="absolute top-0 left-0 h-full w-[3px]"
-              style={{ background: `hsl(${it.hue} 100% 65%)`, boxShadow: `0 0 16px hsl(${it.hue} 100% 65%)` }}
-            />
-            <div
-              className="absolute bottom-0 left-0 h-[1px] w-full origin-left bg-current opacity-60"
               style={{
-                color: `hsl(${it.hue} 100% 70%)`,
-                animation: `chat-bar ${LIFETIME_MS}ms linear forwards`,
+                background: `hsl(${it.hue} 100% 65%)`,
+                boxShadow: `0 0 16px hsl(${it.hue} 100% 65%)`,
               }}
             />
             <div className="relative flex items-baseline gap-3 px-5 py-2.5">

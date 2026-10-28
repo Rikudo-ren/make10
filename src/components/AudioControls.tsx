@@ -166,7 +166,7 @@ export function AudioControls() {
           </div>
 
           <p className="mt-3 border-t border-white/10 pt-2 text-[9px] leading-relaxed text-slate-500">
-            BGM: FreePD.com (CC0) / SE: Kenney Audio Pack (CC0)
+            BGM: Komiku (CC0) / SE: Kenney Audio Pack (CC0)
             <br />
             設定はこの端末に保存されます。
           </p>

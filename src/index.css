@@ -1,10 +1,48 @@
 @import "tailwindcss";
-@import "@fontsource/orbitron/500.css";
-@import "@fontsource/orbitron/700.css";
-@import "@fontsource/orbitron/900.css";
-@import "@fontsource/chakra-petch/400.css";
-@import "@fontsource/chakra-petch/600.css";
-@import "@fontsource/chakra-petch/700.css";
+
+/* 自前ホストのフォント（public/fonts に woff2 のみ配置して軽量化） */
+@font-face {
+  font-family: "Orbitron";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/orbitron-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Orbitron";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/orbitron-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Orbitron";
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url("/fonts/orbitron-900.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-700.woff2") format("woff2");
+}
 
 @theme {
   --font-display: "Orbitron", "Chakra Petch", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
@@ -192,21 +230,16 @@ body {
   60% { transform: translateX(-1px); }
   80% { transform: translateX(1px); }
 }
-@keyframes chat-rise {
-  0% { transform: translate3d(0, 120px, 0) skewX(-12deg); opacity: 0; filter: blur(8px); }
-  9% { transform: translate3d(0, 0, 0) skewX(-6deg); opacity: 1; filter: blur(0); }
-  16% { transform: translate3d(0, 0, 0) skewX(0deg); }
-  78% { transform: translate3d(0, 0, 0) skewX(0deg); opacity: 1; }
-  100% { transform: translate3d(0, -84px, 0) skewX(4deg); opacity: 0; filter: blur(6px); }
+@keyframes chat-drift {
+  0% { transform: translate3d(0, 34px, 0); opacity: 0; }
+  6% { opacity: 1; }
+  92% { opacity: 1; }
+  100% { transform: translate3d(0, -140px, 0); opacity: 0; }
 }
 @keyframes tick-flash {
   0% { transform: scale(1.35); opacity: 0; }
   30% { transform: scale(1); opacity: 1; }
   100% { transform: scale(1); opacity: 0.2; }
-}
-@keyframes chat-bar {
-  from { transform: scaleX(1); }
-  to { transform: scaleX(0); }
 }
 @keyframes border-run {
   0% { background-position: 0% 50%; }

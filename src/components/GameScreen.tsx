@@ -3,7 +3,7 @@ import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
 import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
-import { ChatPanel } from './ChatPanel';
+import { ChatComposer } from './ChatDock';
 import { Button, Card, RankBadge, SectionTitle, formatMs } from './ui';
 import { IconAlert, IconArrowRight, IconCheck, IconClose, IconCrown, IconTrophy, IconUsers } from './icons';
 import { playSe } from '../lib/audio';
@@ -313,6 +313,11 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             onPass={() => ctrl.passRound()}
             onCancelPass={room.status === 'playing' ? () => ctrl.cancelPass() : undefined}
           />
+
+          {/* 対戦中でもすぐ送れる1行チャット（ログは左下のCOMMSボタンから） */}
+          <div className="mt-3 border-t border-white/10 pt-2.5">
+            <ChatComposer ctrl={ctrl} compact />
+          </div>
         </Card>
 
         <div className="flex flex-col gap-3.5">
@@ -410,7 +415,6 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             )}
           </Card>
 
-          <ChatPanel ctrl={ctrl} />
         </div>
       </div>
 

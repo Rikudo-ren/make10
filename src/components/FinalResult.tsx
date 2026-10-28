@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { UseRoom } from '../lib/useRoom';
-import { ChatPanel } from './ChatPanel';
 import { Button, Card, ConfirmDialog, RankBadge } from './ui';
 import { IconCrown, IconTrophy } from './icons';
 import { playSe } from '../lib/audio';
@@ -135,8 +134,6 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
           GMがロビーに戻すと再戦できます。
         </p>
       )}
-
-      <ChatPanel ctrl={ctrl} className="mt-5" />
 
       <div className="mb-auto" />
 
