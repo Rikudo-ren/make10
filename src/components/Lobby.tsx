@@ -2,12 +2,14 @@ import { useState } from 'react';
 import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
 import { SettingsPanel } from './SettingsPanel';
-import { Button, Card } from './ui';
+import { ChatPanel } from './ChatPanel';
+import { Button, Card, ConfirmDialog } from './ui';
 import { cn } from '../utils/cn';
 
 export function Lobby({ ctrl }: { ctrl: UseRoom }) {
   const { room, players, isGM, uid, roomId } = ctrl;
   const [copied, setCopied] = useState(false);
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
   if (!room) return null;
   const settings = normalizeSettings(room.settings);
   const me = players.find((p) => p.uid === uid);
@@ -46,13 +48,17 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
               {me?.isReady ? '✅ 準備OK' : '準備する'}
             </Button>
           )}
-          <Button variant="ghost" onClick={ctrl.leaveRoom}>
+          <Button
+            variant="ghost"
+            onClick={() => (isGM ? setLeaveConfirm(true) : ctrl.leaveRoom())}
+          >
             退出
           </Button>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+        <div className="flex flex-col gap-4">
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-black tracking-widest text-indigo-200">参加者</h2>
@@ -93,6 +99,9 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
           )}
         </Card>
 
+        <ChatPanel ctrl={ctrl} />
+        </div>
+
         <Card>
           <h2 className="mb-3 text-sm font-black tracking-widest text-indigo-200">GM設定</h2>
           <SettingsPanel
@@ -107,6 +116,24 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
           {ctrl.error}
         </p>
       )}
+
+      <ConfirmDialog
+        open={leaveConfirm}
+        title="ルームを解散しますか？"
+        description={
+          <>
+            GMが退出すると<b className="text-rose-300">ルームは削除されます</b>。
+            参加者全員が退出し、チャット・スコア・履歴も残りません。
+          </>
+        }
+        confirmLabel="解散して退出"
+        cancelLabel="やめる"
+        onConfirm={() => {
+          setLeaveConfirm(false);
+          ctrl.leaveRoom();
+        }}
+        onCancel={() => setLeaveConfirm(false)}
+      />
     </div>
   );
 }

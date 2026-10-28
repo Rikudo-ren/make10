@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBoard } from '../lib/board';
 import { EPS, OP_SYMBOL, displayValue, type Op } from '../lib/solver';
-import { Button } from './ui';
+import { Button, ConfirmDialog } from './ui';
 import { cn } from '../utils/cn';
 
 interface Props {
@@ -15,8 +15,13 @@ interface Props {
   /** formula: 表示用の式文字列 / key: 解答例との照合に使う等価判定キー */
   onSolved: (formula: string, key: string) => void;
   onPass?: () => void;
+  /** パスの取り消し（ラウンド中のみ有効） */
+  onCancelPass?: () => void;
+  /** パス中でも解答はできる（数字を触ったらパスを取り消す） */
   passed?: boolean;
   isCountdown?: boolean;
+  /** 出題が変わったことを検知するためのキー（数字が同じでも次の問題なら盤面をリセット） */
+  roundKey?: string | number;
 }
 
 export function PlayArea({
@@ -29,21 +34,27 @@ export function PlayArea({
   penaltyMode,
   onSolved,
   onPass,
+  onCancelPass,
   passed,
   isCountdown,
+  roundKey,
 }: Props) {
-  const board = useBoard(numbers, integerOnly);
-  const [lockUntil, setLockUntil] = useState(0);
+  // 「数字が同じで目標値だけ違う次の問題」でも盤面を必ず作り直す
+  const boardKey = `${numbers.join(',')}|${target}|${roundKey ?? ''}`;
+  const board = useBoard(numbers, integerOnly, boardKey);
+  // お手つきロックは問題が変わったら無効（前ラウンドの残り時間を引き継がない）
+  const [lockState, setLockState] = useState<{ key: string; until: number }>({ key: '', until: 0 });
   const [now, setNow] = useState(Date.now());
   const [wrongShake, setWrongShake] = useState(0);
+  const [confirmPass, setConfirmPass] = useState(false);
   const solvedRef = useRef<string | null>(null);
-  const key = numbers.join(',') + '|' + target;
+  const resumeRequestedRef = useRef(false);
 
   useEffect(() => {
     solvedRef.current = null;
-    setLockUntil(0);
     setWrongShake(0);
-  }, [key]);
+    setConfirmPass(false);
+  }, [boardKey]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 200);
@@ -59,16 +70,28 @@ export function PlayArea({
       }
     } else {
       setWrongShake((w) => w + 1);
-      if (penaltyMode === 'lock') setLockUntil(Date.now() + 5000);
+      if (penaltyMode === 'lock') setLockState({ key: boardKey, until: Date.now() + 5000 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board.finished, board.finalFormula, board.finalValue, target]);
 
-  const lockRemain = Math.max(0, lockUntil - now);
-  const locked = !!disabled || lockRemain > 0 || !!isCountdown || !!passed;
+  const lockRemain = lockState.key === boardKey ? Math.max(0, lockState.until - now) : 0;
+  // パス中でも解き直せる（パスは「降参の意思表示」であって解答権の放棄ではない）
+  const locked = !!disabled || lockRemain > 0 || !!isCountdown;
   const wrongFinished =
     board.finished && board.finalValue !== null && Math.abs(board.finalValue - target) >= EPS;
   const penaltyText = penaltyMode === 'lock' ? '誤答時は5秒間入力ロック' : 'ペナルティなし';
+  const canRequestPass = !!onPass && !passed && !disabled && !isCountdown;
+  /** パス中に操作したら「やっぱり解く」とみなしてパスを取り消す */
+  const resumeIfPassed = () => {
+    if (!passed || !onCancelPass || resumeRequestedRef.current) return;
+    resumeRequestedRef.current = true;
+    onCancelPass();
+  };
+
+  useEffect(() => {
+    if (!passed) resumeRequestedRef.current = false;
+  }, [passed]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,7 +141,10 @@ export function PlayArea({
             {slot.tile ? (
               <button
                 disabled={locked}
-                onClick={() => board.tapNumber(slot.id)}
+                onClick={() => {
+                  resumeIfPassed();
+                  board.tapNumber(slot.id);
+                }}
                 className={cn(
                   'tile animate-pop transition-all',
                   slot.id === board.selectedSlot && 'tile-selected',
@@ -143,7 +169,10 @@ export function PlayArea({
             <button
               key={op}
               disabled={locked || !allowed || board.selectedSlot === null}
-              onClick={() => board.tapOp(op)}
+              onClick={() => {
+                resumeIfPassed();
+                board.tapOp(op);
+              }}
               className={cn('op-btn py-4 sm:py-5', active && 'op-btn-active')}
             >
               {OP_SYMBOL[op]}
@@ -152,37 +181,80 @@ export function PlayArea({
         })}
       </div>
 
-      {/* 操作ボタン */}
+      {/* 操作ボタン（全リセットはパスと離した左上のまとまりに配置） */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="soft" onClick={board.undo} disabled={!board.canUndo || locked} className="px-4">
+        <Button
+          variant="soft"
+          onClick={board.undo}
+          disabled={!board.canUndo || locked}
+          className="px-3 py-2.5 text-xs"
+        >
           ↩ 1手戻す
         </Button>
-        <Button variant="soft" onClick={board.redo} disabled={!board.canRedo || locked} className="px-4">
+        <Button
+          variant="soft"
+          onClick={board.redo}
+          disabled={!board.canRedo || locked}
+          className="px-3 py-2.5 text-xs"
+        >
           やり直す →
         </Button>
         <div className="grow" />
-        {onPass && (
-          <Button
-            variant="ghost"
-            onClick={onPass}
-            disabled={!!passed || !!disabled || !!isCountdown}
-            title="解けない場合はパスできます。未正解者が全員パスするとラウンド終了になります"
-          >
-            {passed ? '⏭ パス済み' : '⏭ パスする'}
-          </Button>
-        )}
         <Button
-          variant="danger"
+          variant="soft"
           onClick={board.reset}
           disabled={locked}
-          className="px-4"
-          title="出題時の状態まで一気に戻します"
+          className="px-3 py-2.5 text-xs"
+          title="式を出題時の状態まで一気に戻します"
         >
           ⟲ 全リセット
         </Button>
       </div>
 
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
+      {/* パスは「全リセット」と混同しないよう、区切り線を入れて別ブロックに配置 */}
+      {onPass && (
+        <div className="mt-1 border-t border-white/10 pt-4">
+        <div className="rounded-2xl border border-amber-300/20 bg-amber-400/[0.04] p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs font-black tracking-wide text-amber-200">
+                <span aria-hidden>⏭</span>
+                <span>{passed ? 'この問題はパスしました' : 'この問題をあきらめる'}</span>
+              </div>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+                {passed
+                  ? 'パス中でも解答OK。数字をタップするとパスを取り消して解答に戻れます'
+                  : '未正解の人が全員パスするとラウンド終了。押しただけでは解答権は失われません'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {passed ? (
+                <Button
+                  variant="soft"
+                  className="px-3 py-2 text-xs"
+                  disabled={!onCancelPass}
+                  onClick={onCancelPass}
+                  title="ラウンドが終了していなければ解答に戻れます"
+                >
+                  ↩ パスを取り消す
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="border border-white/10 px-3 py-2 text-xs text-slate-300"
+                  disabled={!canRequestPass}
+                  onClick={() => setConfirmPass(true)}
+                >
+                  ⏭ パスする
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
         <span>
           <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
             Backspace
@@ -197,6 +269,28 @@ export function PlayArea({
           {disabledReason}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmPass}
+        title="この問題をパスしますか？"
+        description={
+          <>
+            パスすると「未正解の人が全員パスしたら終了」の判定対象になります。
+            <br />
+            パスしたあとでも<b className="text-amber-300">解答はできます</b>（数字を触るとパスを取り消します）。
+            <span className="mt-1 block text-xs text-slate-400">
+              全員パスで終了するまで少し猶予があるので、誤タップも取り消せます
+            </span>
+          </>
+        }
+        confirmLabel="パスする"
+        cancelLabel="やめる"
+        onConfirm={() => {
+          setConfirmPass(false);
+          onPass?.();
+        }}
+        onCancel={() => setConfirmPass(false)}
+      />
     </div>
   );
 }

@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
+  // プレビュー用ホスト（*.e2b.app など）からアクセスできるようにする
+  server: { host: true, allowedHosts: true },
+  preview: { host: true, allowedHosts: true },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { generatePuzzle, type Puzzle } from '../lib/puzzle';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { generatePuzzleAsync, type Puzzle } from '../lib/puzzle';
 import { DEFAULT_SETTINGS, type Settings } from '../lib/types';
 import { PlayArea } from './PlayArea';
 import { Button, Card, Field, Toggle, inputCls } from './ui';
@@ -16,30 +16,43 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [solPage, setSolPage] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<{ attempts: number; elapsedMs: number } | null>(null);
+  const [puzzleSeq, setPuzzleSeq] = useState(0);
+  const seqRef = useRef(0);
 
-  const newPuzzle = useCallback((s: Settings) => {
+  const newPuzzle = useCallback(async (s: Settings) => {
+    const mySeq = ++seqRef.current;
     setLoading(true);
     // 一瞬次の問題が見えないよう、先にクリアしてから生成
     setPuzzle(null);
     setCleared(null);
-    // 次フレームで生成（UIに「準備中」を出す）
-    requestAnimationFrame(() => {
-      const p = generatePuzzle(s);
-      if (!p) {
-        setError('この設定では解ける問題を生成できませんでした。設定を見直してください。');
-        setLoading(false);
-        return;
-      }
-      setError(null);
-      setPuzzle(p);
-      setStartedAt(Date.now());
-      setSolPage(0);
-      setLoading(false);
+    setError(null);
+    setProgress({ attempts: 0, elapsedMs: 0 });
+    // 生成はタイムスライス方式なので、重い設定でも画面は固まらない
+    const p = await generatePuzzleAsync(s, {
+      deadlineMs: 3000,
+      onProgress: (g) => {
+        if (seqRef.current === mySeq) setProgress({ attempts: g.attempts, elapsedMs: g.elapsedMs });
+      },
+      shouldCancel: () => seqRef.current !== mySeq,
     });
+    if (seqRef.current !== mySeq) return;
+    setLoading(false);
+    setProgress(null);
+    if (!p) {
+      setError(
+        'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値をゆるめてみてください。',
+      );
+      return;
+    }
+    setPuzzle(p);
+    setStartedAt(Date.now());
+    setSolPage(0);
+    setPuzzleSeq((n) => n + 1);
   }, []);
 
   useEffect(() => {
-    newPuzzle(settings);
+    void newPuzzle(settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -139,7 +152,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
               onChange={(v) => setSettings((s) => ({ ...s, showDifficulty: v }))}
             />
           </div>
-          <Button className="mt-4 w-full" onClick={() => newPuzzle(settings)} disabled={loading}>
+          <Button className="mt-4 w-full" onClick={() => void newPuzzle(settings)} disabled={loading}>
             ▶ この設定で新しい問題
           </Button>
         </Card>
@@ -152,7 +165,18 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
       )}
 
       {loading && (
-        <Card className="mb-4 py-10 text-center text-sm font-bold text-slate-400">問題を準備中…</Card>
+        <Card className="mb-4 py-8 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-indigo-300" />
+            <span className="text-sm font-bold text-slate-300">問題を準備中…</span>
+            {progress && (
+              <span className="text-[11px] tabular-nums text-slate-500">
+                {(progress.elapsedMs / 1000).toFixed(1)}秒 / {progress.attempts}通り試行
+                {progress.elapsedMs > 1200 && '（重い設定なので時間がかかっています）'}
+              </span>
+            )}
+          </div>
+        </Card>
       )}
 
       {puzzle && !loading && (
@@ -168,6 +192,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
           </div>
           <Card>
             <PlayArea
+              roundKey={`solo-${puzzleSeq}`}
               numbers={puzzle.numbers}
               target={puzzle.target}
               allowedOperators={settings.allowedOperators}
@@ -178,7 +203,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
             />
           </Card>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button onClick={() => newPuzzle(settings)} disabled={loading}>
+            <Button onClick={() => void newPuzzle(settings)} disabled={loading}>
               次の問題 ▶
             </Button>
             <Button

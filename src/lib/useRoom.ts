@@ -1,17 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   get,
+  limitToLast,
   onDisconnect,
   onValue,
+  push,
+  query,
   ref,
   remove,
   serverTimestamp,
   set,
   update,
 } from 'firebase/database';
-import { db, ensureAnonymousAuth } from '../firebase';
-import { generatePuzzle } from './puzzle';
+import { app, auth, db, ensureAnonymousAuth } from '../firebase';
+import { generatePuzzleAsync, puzzleKey, type GenerateProgress } from './puzzle';
 import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } from './types';
+
+/** 問題生成の締切(ms)。これを超えたら諦めてエラーを出す（UIは固まらない） */
+const GENERATE_DEADLINE_MS = 3000;
+/** チャットの保持件数（これを超えた古いメッセージは自動削除される） */
+export const CHAT_KEEP = 60;
+/** チャット1件の最大文字数 */
+export const CHAT_MAX_LEN = 140;
+/** 連投防止(ms) */
+const CHAT_COOLDOWN_MS = 500;
+/**
+ * ルーム（スコア・履歴・解答・チャット）の保存期間。
+ * 最終アクセスから24時間で、次に誰かがアプリを開いたときに掃除される。
+ */
+export const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+/** 室内の操作や在室で TTL を延長する間隔 */
+const TOUCH_THROTTLE_MS = 60 * 1000;
+/** 期限切れスイープの実行間隔 */
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+/** 旧バージョンで作られた（期限情報の無い）ルームの移行スキャン間隔 */
+const LEGACY_SCAN_KEY = 'make10.legacyScanAt';
+const LEGACY_SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * ルーム一覧（TTL掃除用の軽量インデックス）。
+ * rooms/{code} を全件読まずに済むよう、コードと期限だけを持つ。
+ */
+type RoomIndexEntry = Record<string, { expiresAt?: number; createdAt?: number }>;
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -58,9 +88,16 @@ export function useRoom() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rttMs, setRttMs] = useState(0);
+  const [genProgress, setGenProgress] = useState<GenerateProgress | null>(null);
   const offsetRef = useRef(0);
   const roomRef = useRef<RoomData | null>(null);
   const roomIdRef = useRef<string | null>(null);
+  const lastChatAtRef = useRef(0);
+  const uidRef = useRef<string | null>(null);
+  /** 自分から退出したときは「解散されました」通知を出さない */
+  const selfLeaveRef = useRef(false);
+  /** ルームTTLの延長を最後に行った時刻 */
+  const lastTouchRef = useRef(0);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
   const finalizedRef = useRef<Set<number>>(new Set());
   const startingRef = useRef(false);
@@ -68,6 +105,7 @@ export function useRoom() {
 
   roomRef.current = room;
   roomIdRef.current = roomId;
+  uidRef.current = uid;
 
   const serverNow = useCallback(() => Date.now() + offsetRef.current, []);
 
@@ -102,7 +140,14 @@ export function useRoom() {
       (snap) => {
         const val = snap.val();
         if (!val) {
+          // ルームが消えた（GMが退出して削除した／別端末で削除された）
+          // → トップへ戻し、次回起動時に存在しないルームへ自動復帰しないようにする
+          localStorage.removeItem('make10.room');
           setRoom(null);
+          setRoomId(null);
+          if (!selfLeaveRef.current) {
+            setError('ルームが解散されました（GMが退出した可能性があります）');
+          }
           return;
         }
         setRoom({ ...val, settings: normalizeSettings(val.settings) } as RoomData);
@@ -141,6 +186,137 @@ export function useRoom() {
     onDisconnect(ref(db, `rooms/${code}/players/${myUid}/isReady`)).remove();
   }, []);
 
+  /** ルームの有効期限を「今 + 24時間」に更新する（TTLの起点＝最終アクセス） */
+  const touchRoom = useCallback(async (code: string) => {
+    lastTouchRef.current = Date.now();
+    try {
+      const base = serverNow();
+      const expiresAt = base + ROOM_TTL_MS;
+      await update(ref(db), {
+        [`rooms/${code}/expiresAt`]: expiresAt,
+        [`rooms/index/${code}/expiresAt`]: expiresAt,
+      });
+    } catch {
+      /* オフライン時などは無視（在室中の再延長は定期実行される） */
+    }
+  }, [serverNow]);
+
+  /**
+   * 期限切れ（24時間アクセスのなかった）ルームを削除する。
+   * Cloud Functions を使わずに済むよう、アプリ起動中にクライアント側で掃除する。
+   * 失敗（権限が無い等）してもゲーム進行には影響しないので握りつぶす。
+   */
+  const sweepExpiredRooms = useCallback(async () => {
+    try {
+      const nowMs = serverNow();
+      const snap = await get(ref(db, 'rooms/index'));
+      const index = (snap.val() ?? {}) as RoomIndexEntry;
+      for (const [code, entry] of Object.entries(index)) {
+        const exp = entry?.expiresAt;
+        if (typeof exp === 'number' && Number.isFinite(exp)) {
+          if (exp <= nowMs) {
+            await remove(ref(db, `rooms/${code}`));
+            await remove(ref(db, `rooms/index/${code}`));
+          }
+        } else {
+          // 期限情報が無い（旧バージョンで作られた）ルームは、今から24時間で登録し直す
+          await set(ref(db, `rooms/index/${code}/expiresAt`), nowMs + ROOM_TTL_MS);
+        }
+      }
+    } catch {
+      /* 掃除できなくてもOK */
+    }
+  }, [serverNow]);
+
+  /**
+   * 旧バージョンで作られたルーム（rooms/index に載っていない）に期限を付ける。
+   * 1日1回だけ、浅い取得（shallow）でルームコード一覧を取り、期限を書き込む。
+   * これで「前からあるルーム」も24時間後に消える。
+   */
+  const migrateLegacyRooms = useCallback(async () => {
+    try {
+      const last = Number(localStorage.getItem(LEGACY_SCAN_KEY) ?? 0);
+      if (Number.isFinite(last) && Date.now() - last < LEGACY_SCAN_INTERVAL_MS) return;
+      const user = auth.currentUser;
+      if (!user) return;
+      localStorage.setItem(LEGACY_SCAN_KEY, String(Date.now()));
+
+      const baseUrl = (app.options as { databaseURL?: string }).databaseURL;
+      if (!baseUrl) return;
+      const token = await user.getIdToken();
+      const res = await fetch(`${baseUrl}/rooms.json?shallow=true&auth=${token}`);
+      if (!res.ok) return;
+      const raw = (await res.json()) ?? {};
+      const codes = Object.keys(raw).filter((c) => c !== 'index');
+      if (codes.length === 0) return;
+
+      const idxSnap = await get(ref(db, 'rooms/index'));
+      const index = (idxSnap.val() ?? {}) as RoomIndexEntry;
+      const nowMs = serverNow();
+      const updates: Record<string, number> = {};
+      for (const code of codes) {
+        if (index[code]?.expiresAt) continue;
+        updates[`rooms/${code}/expiresAt`] = nowMs + ROOM_TTL_MS;
+        updates[`rooms/index/${code}/expiresAt`] = nowMs + ROOM_TTL_MS;
+        updates[`rooms/index/${code}/createdAt`] = nowMs;
+      }
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    } catch {
+      /* 移行できなくてもゲーム進行には影響しない */
+    }
+  }, [serverNow]);
+
+  /**
+   * 参加しようとしたルームが期限切れなら削除して true を返す。
+   * 参加してから消えるのを防ぐための最終チェック。
+   */
+  const dropExpiredRoom = useCallback(
+    async (code: string) => {
+      try {
+        const snap = await get(ref(db, `rooms/index/${code}`));
+        const entry = snap.val() as { expiresAt?: number; createdAt?: number } | null;
+        const nowMs = serverNow();
+        const exp = entry?.expiresAt;
+        if (typeof exp !== 'number' || !Number.isFinite(exp)) {
+          // 旧バージョンで作られたルーム → 今から24時間の期限を付ける
+          if (!entry) {
+            await set(ref(db, `rooms/index/${code}`), { expiresAt: nowMs + ROOM_TTL_MS, createdAt: nowMs });
+          }
+          return false;
+        }
+        if (exp > nowMs) return false;
+        await remove(ref(db, `rooms/${code}`));
+        await remove(ref(db, `rooms/index/${code}`));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [serverNow],
+  );
+
+  // 24時間TTL: 起動時と10分おきに期限切れルームを掃除する
+  // （Cloud Functions なしで動かすため、アプリを開いた人が掃除する）
+  useEffect(() => {
+    if (!uid) return; // 未認証だと権限エラーになるので認証後に実行
+    void migrateLegacyRooms();
+    void sweepExpiredRooms();
+    const id = setInterval(() => void sweepExpiredRooms(), SWEEP_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [migrateLegacyRooms, sweepExpiredRooms, uid]);
+
+  /** 実際の操作（解答・パス・チャット等）があったときにTTLを延長する（1分に1回まで） */
+  const markActivity = useCallback(() => {
+    const code = roomIdRef.current;
+    if (!code) return;
+    if (Date.now() - lastTouchRef.current < TOUCH_THROTTLE_MS) return;
+    void touchRoom(code);
+  }, [touchRoom]);
+
+  // コールバックの依存配列を増やさずにどこからでも呼べるようにしておく
+  const markActivityRef = useRef(markActivity);
+  markActivityRef.current = markActivity;
+
   const createRoom = useCallback(
     async (name: string, settings: Settings = DEFAULT_SETTINGS) => {
       setError(null);
@@ -163,7 +339,14 @@ export function useRoom() {
           rttMs: 0,
         });
         await set(ref(db, `rooms/${code}/players/${myUid}/score`), 0);
+        await set(ref(db, `rooms/${code}/expiresAt`), serverNow() + ROOM_TTL_MS);
+        await set(ref(db, `rooms/index/${code}`), {
+          expiresAt: serverNow() + ROOM_TTL_MS,
+          createdAt: serverNow(),
+        });
+        lastTouchRef.current = Date.now();
         attachPresence(code, myUid);
+        selfLeaveRef.current = false;
         localStorage.setItem('make10.room', code);
         setRoomId(code);
         measureRtt(code, myUid);
@@ -175,7 +358,7 @@ export function useRoom() {
         setBusy(false);
       }
     },
-    [attachPresence, measureRtt, uid],
+    [attachPresence, measureRtt, serverNow, uid],
   );
 
   const joinRoom = useCallback(
@@ -191,6 +374,11 @@ export function useRoom() {
           setError('そのルームコードは見つかりませんでした');
           return null;
         }
+        // 24時間アクセスが無かったルームは参加前に破棄する
+        if (await dropExpiredRoom(code)) {
+          setError('そのルームコードは見つかりませんでした（24時間経過したため削除されました）');
+          return null;
+        }
         const data = snap.val() as RoomData;
         const taken = Object.entries(data.players ?? {})
           .filter(([id]) => id !== myUid)
@@ -202,6 +390,8 @@ export function useRoom() {
           rttMs: 0,
         });
         attachPresence(code, myUid);
+        selfLeaveRef.current = false;
+        await touchRoom(code);
         localStorage.setItem('make10.room', code);
         setRoomId(code);
         measureRtt(code, myUid);
@@ -213,7 +403,7 @@ export function useRoom() {
         setBusy(false);
       }
     },
-    [attachPresence, measureRtt, uid],
+    [attachPresence, dropExpiredRoom, measureRtt, touchRoom, uid],
   );
 
   // 再読み込み時の自動復帰（匿名UIDは端末に保持されるので得点も維持される）
@@ -233,6 +423,7 @@ export function useRoom() {
         const name = meSnap.val()?.name ?? localStorage.getItem('make10.name') ?? 'プレイヤー';
         await update(ref(db, `rooms/${saved}/players/${uid}`), { name, rttMs: 0 });
         attachPresence(saved, uid);
+        void touchRoom(saved);
         setRoomId(saved);
         measureRtt(saved, uid);
       } catch {
@@ -242,26 +433,38 @@ export function useRoom() {
     return () => {
       cancelled = true;
     };
-  }, [attachPresence, measureRtt, uid]);
+  }, [attachPresence, measureRtt, touchRoom, uid]);
 
   const leaveRoom = useCallback(async () => {
     const code = roomIdRef.current;
-    if (code && uid) {
+    const data = roomRef.current;
+    const myUid = uidRef.current;
+    if (code && myUid) {
       try {
-        await remove(ref(db, `rooms/${code}/players/${uid}/name`));
-        await remove(ref(db, `rooms/${code}/players/${uid}/isReady`));
+        if (data?.gmUid === myUid) {
+          // GMが退出したらルームごと削除する。
+          // （チャット・スコア・履歴をサーバーに残さないための後片付け）
+          await remove(ref(db, `rooms/${code}`));
+          await remove(ref(db, `rooms/index/${code}`));
+        } else {
+          await remove(ref(db, `rooms/${code}/players/${myUid}/name`));
+          await remove(ref(db, `rooms/${code}/players/${myUid}/isReady`));
+        }
       } catch {
         /* noop */
       }
     }
     finalizedRef.current = new Set();
+    selfLeaveRef.current = true;
+    setGenProgress(null);
     localStorage.removeItem('make10.room');
     setRoomId(null);
     setRoom(null);
-  }, [uid]);
+  }, []);
 
   const setReady = useCallback(
     async (ready: boolean) => {
+    markActivityRef.current();
       if (!roomId || !uid) return;
       await set(ref(db, `rooms/${roomId}/players/${uid}/isReady`), ready);
     },
@@ -270,30 +473,44 @@ export function useRoom() {
 
   const updateSettings = useCallback(
     async (patch: Partial<Settings>) => {
+    markActivityRef.current();
       if (!roomId || !isGM) return;
       await update(ref(db, `rooms/${roomId}/settings`), patch);
     },
     [isGM, roomId],
   );
 
-  /** 出題を生成して配信（GMのみ） */
+  /**
+   * 出題を生成して配信（GMのみ）。
+   * 生成は非同期・タイムスライスなので、重い設定でもブラウザが固まらない。
+   * 生成中は rooms/{code}/preparingAt を立てて、全員に「準備中」を表示する。
+   */
   const startRound = useCallback(
-    async (globalIndex: number, matchStartIndex: number, settings: Settings) => {
+    async (globalIndex: number, matchStartIndex: number, settings: Settings, avoid?: string) => {
       const code = roomIdRef.current;
       if (!code) return;
       if (startingRef.current) return;
       startingRef.current = true;
+      setError(null);
+      setGenProgress({ attempts: 0, elapsedMs: 0, deadlineMs: GENERATE_DEADLINE_MS });
       try {
-        const puzzle = generatePuzzle(settings);
+        await set(ref(db, `rooms/${code}/preparingAt`), serverTimestamp());
+        const puzzle = await generatePuzzleAsync(settings, {
+          deadlineMs: GENERATE_DEADLINE_MS,
+          avoid,
+          onProgress: (p) => setGenProgress(p),
+        });
         if (!puzzle) {
-          setError('この設定では解ける問題を生成できませんでした。設定を見直してください。');
-          await set(ref(db, `rooms/${code}/status`), 'lobby');
+          setError(
+            'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値を見直してください（ラウンドは開始していません）。',
+          );
           return;
         }
         // status と currentRound を同時更新し、問題切り替え時のチラ見えを防ぐ。
         // startedAt がサーバー時刻に解決されるまでクライアント側でカウントダウンマスクをかける。
         await update(ref(db, `rooms/${code}`), {
           status: 'playing',
+          preparingAt: null,
           currentRound: {
             roundIndex: globalIndex,
             matchStartIndex,
@@ -309,8 +526,16 @@ export function useRoom() {
             difficultyLabel: settings.showDifficulty ? puzzle.difficultyLabel : null,
           },
         });
+      } catch (e: any) {
+        setError(e?.message ?? '出題の配信に失敗しました');
       } finally {
         startingRef.current = false;
+        setGenProgress(null);
+        try {
+          await remove(ref(db, `rooms/${code}/preparingAt`));
+        } catch {
+          /* noop */
+        }
       }
     },
     [],
@@ -328,14 +553,18 @@ export function useRoom() {
     for (const id of ids) {
       await set(ref(db, `rooms/${code}/players/${id}/score`), 0);
     }
-    await startRound(startIndex, startIndex, settings);
+    const prev = data.currentRound;
+    await startRound(startIndex, startIndex, settings, prev ? puzzleKey(prev) : undefined);
   }, [isGM, startRound]);
 
   const submitAnswer = useCallback(
     async (formula: string, key: string) => {
+    markActivityRef.current();
       const code = roomIdRef.current;
       const data = roomRef.current;
       if (!code || !data || !uid || !data.currentRound) return;
+      // 受付終了後に届いた解答は書き込まない（結果表示とのズレ防止）
+      if (data.status !== 'playing') return;
       const r = data.currentRound;
       // 各端末の経過時間（カウントダウン3秒分は除外）で順位付け
       const COUNTDOWN_MS = 3000;
@@ -358,9 +587,11 @@ export function useRoom() {
   );
 
   const passRound = useCallback(async () => {
+    markActivityRef.current();
     const code = roomIdRef.current;
     const data = roomRef.current;
     if (!code || !data || !uid || !data.currentRound) return;
+    if (data.status !== 'playing') return;
     const r = data.currentRound;
     try {
       await set(ref(db, `rooms/${code}/answers/${r.roundIndex}/${uid}`), {
@@ -374,6 +605,77 @@ export function useRoom() {
       /* noop */
     }
   }, [uid]);
+
+  /**
+   * パスの取り消し。誤タップで解答できなくなった場合に、ラウンド中なら復帰できる。
+   * （ラウンドが確定済みなら何もしない）
+   */
+  const cancelPass = useCallback(async () => {
+    markActivityRef.current();
+    const code = roomIdRef.current;
+    const data = roomRef.current;
+    const myUid = uidRef.current;
+    if (!code || !data?.currentRound || !myUid) return;
+    if (data.status !== 'playing') return;
+    const roundIndex = data.currentRound.roundIndex;
+    const mine = data.answers?.[String(roundIndex)]?.[myUid];
+    if (!mine?.passed) return;
+    try {
+      await remove(ref(db, `rooms/${code}/answers/${roundIndex}/${myUid}`));
+    } catch (e: any) {
+      setError(e?.message ?? 'パスの取り消しに失敗しました');
+    }
+  }, []);
+
+  /** チャット送信（ルーム内のみ・直近 CHAT_KEEP 件だけ保持） */
+  const sendChat = useCallback(
+    async (raw: string): Promise<boolean> => {
+    markActivityRef.current();
+      const code = roomIdRef.current;
+      const data = roomRef.current;
+      const myUid = uidRef.current;
+      const text = (raw ?? '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+      if (!code || !data || !myUid || !text) return false;
+      const t = Date.now();
+      if (t - lastChatAtRef.current < CHAT_COOLDOWN_MS) return false;
+      lastChatAtRef.current = t;
+      try {
+        const name = (data.players?.[myUid]?.name ?? 'プレイヤー').slice(0, 20);
+        await set(push(ref(db, `rooms/${code}/chat`)), {
+          uid: myUid,
+          name,
+          text,
+          at: serverNow(),
+        });
+        // 古いメッセージを間引く（チャットがサーバーに溜まり続けないように）
+        const snap = await get(query(ref(db, `rooms/${code}/chat`), limitToLast(CHAT_KEEP + 20)));
+        const keys = Object.keys((snap.val() ?? {}) as Record<string, unknown>);
+        if (keys.length > CHAT_KEEP) {
+          const updates: Record<string, null> = {};
+          for (const k of keys.slice(0, keys.length - CHAT_KEEP)) {
+            updates[`rooms/${code}/chat/${k}`] = null;
+          }
+          await update(ref(db), updates);
+        }
+        return true;
+      } catch (e: any) {
+        setError(e?.message ?? 'チャットの送信に失敗しました');
+        return false;
+      }
+    },
+    [serverNow],
+  );
+
+  /** チャット全消去（GMのみ） */
+  const clearChat = useCallback(async () => {
+    const code = roomIdRef.current;
+    if (!code || !isGM) return;
+    try {
+      await remove(ref(db, `rooms/${code}/chat`));
+    } catch {
+      /* noop */
+    }
+  }, [isGM]);
 
   /** ラウンド確定処理（GMのみ） */
   const finalizeRound = useCallback(
@@ -461,7 +763,7 @@ export function useRoom() {
       await set(ref(db, `rooms/${code}/status`), 'finished');
       return;
     }
-    await startRound(r.roundIndex + 1, matchStartIndex, settings);
+    await startRound(r.roundIndex + 1, matchStartIndex, settings, puzzleKey(r));
   }, [isGM, startRound]);
 
   const backToLobby = useCallback(async () => {
@@ -481,11 +783,13 @@ export function useRoom() {
     if (lastStateKeyRef.current !== stateKey) {
       lastStateKeyRef.current = stateKey;
       clearTimer('timeup');
+      clearTimer('allpass');
     }
     if (!isGM || !room || !roomId) return;
 
     if (room.status !== 'playing' || !room.currentRound) {
       clearTimer('timeup');
+      clearTimer('allpass');
       return;
     }
     const settings = normalizeSettings(room.settings);
@@ -506,6 +810,7 @@ export function useRoom() {
     // 1) 定員（targetCapacity）が全員埋まったら即終了！
     if (correctIds.length >= targetCapacity) {
       clearTimer('timeup');
+      clearTimer('allpass');
       finalizeRound('answered');
       return;
     }
@@ -519,9 +824,16 @@ export function useRoom() {
 
     if (allUnsolvedPassed) {
       clearTimer('timeup');
-      finalizeRound(correctIds.length > 0 ? 'answered' : 'passed');
+      // 誤タップした人がパスを取り消せるように、少しだけ猶予を置いてから確定する
+      if (!timersRef.current['allpass']) {
+        timersRef.current['allpass'] = setTimeout(() => {
+          timersRef.current['allpass'] = null;
+          finalizeRound(correctIds.length > 0 ? 'answered' : 'passed');
+        }, 1300);
+      }
       return;
     }
+    clearTimer('allpass');
 
     // 3) 時間切れ監視（制限時間ありの場合のみ）
     if (!settings.unlimitedTime && !timersRef.current['timeup']) {
@@ -561,8 +873,13 @@ export function useRoom() {
     startMatch,
     submitAnswer,
     passRound,
+    cancelPass,
     nextRound,
     backToLobby,
+    sendChat,
+    clearChat,
+    genProgress,
+    preparing: !!room?.preparingAt,
   };
 }
 

@@ -78,6 +78,15 @@ export interface AnswerData {
   passed?: boolean;
 }
 
+/** ゲーム内チャットの1件（ルーム内にのみ保持し、直近 CHAT_KEEP 件だけ残す） */
+export interface ChatMessage {
+  uid: string;
+  name: string;
+  text: string;
+  /** サーバー時刻オフセット補正済みのタイムスタンプ(ms) */
+  at: number;
+}
+
 export interface RoomData {
   gmUid: string;
   status: 'lobby' | 'playing' | 'judging' | 'finished';
@@ -86,6 +95,9 @@ export interface RoomData {
   currentRound?: RoundData;
   answers?: Record<string, Record<string, AnswerData>>;
   history?: Record<string, RoundData>;
+  chat?: Record<string, ChatMessage>;
+  /** GMが問題を生成している間だけ入る時刻(ms)。全員に「準備中」を出すために使う */
+  preparingAt?: number | null;
 }
 
 export function normalizeSettings(raw: Partial<Settings> | undefined): Settings {

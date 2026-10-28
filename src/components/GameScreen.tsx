@@ -3,6 +3,7 @@ import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
 import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
+import { ChatPanel } from './ChatPanel';
 import { Button, Card, formatMs, SectionTitle } from './ui';
 import { cn } from '../utils/cn';
 
@@ -265,23 +266,24 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             allowedOperators={settings.allowedOperators}
             integerOnly={settings.integerOnly}
             penaltyMode={settings.penaltyMode}
-            disabled={judging || iAmSolved || !!myAnswer?.passed}
+            disabled={judging || iAmSolved}
             disabledReason={
               judging
                 ? 'ラウンド終了！結果を表示中です'
                 : iAmSolved
                   ? `🎉 正解完了（${myLiveRank}位抜け！式: ${myAnswer?.formula}）他のプレイヤーの解答を待っています…`
-                  : myAnswer?.passed
-                    ? '⏭ パスしました。他の未正解者が全員パスするか、定員に達すると次の問題へ進みます'
-                    : undefined
+                  : undefined
             }
             passed={!!myAnswer?.passed}
+            roundKey={r.roundIndex}
             isCountdown={showMask}
             onSolved={(f, k) => ctrl.submitAnswer(f, k)}
             onPass={() => ctrl.passRound()}
+            onCancelPass={room.status === 'playing' ? () => ctrl.cancelPass() : undefined}
           />
         </Card>
 
+        <div className="flex flex-col gap-4">
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <SectionTitle icon="👥">プレイヤー状況</SectionTitle>
@@ -376,7 +378,27 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </div>
           )}
         </Card>
+
+        <ChatPanel ctrl={ctrl} />
+        </div>
       </div>
+
+      {/* 出題失敗などのエラーは、結果モーダルの上にも出るよう固定トーストで表示 */}
+      {ctrl.error && (
+        <div className="animate-float-up fixed inset-x-0 top-3 z-[75] mx-auto flex w-[94%] max-w-lg items-start gap-2 rounded-2xl border border-rose-400/40 bg-rose-950/95 px-4 py-3 text-left text-xs font-bold leading-relaxed text-rose-100 shadow-2xl">
+          <span className="mt-0.5" aria-hidden>
+            ⚠️
+          </span>
+          <span className="min-w-0 flex-1">{ctrl.error}</span>
+          <button
+            onClick={() => ctrl.setError(null)}
+            className="shrink-0 rounded-md px-1 text-rose-300 transition hover:text-white"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* カウントダウン + チラ見え防止 */}
       {showMask && (

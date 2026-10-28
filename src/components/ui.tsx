@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../utils/cn';
 
 export function Card({
@@ -134,5 +135,86 @@ export function SectionTitle({ icon, children }: { icon?: string; children: Reac
       {icon && <span className="text-sm">{icon}</span>}
       {children}
     </h2>
+  );
+}
+
+export function Spinner({ className }: { className?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label="読み込み中"
+      className={cn(
+        'inline-block h-5 w-5 animate-spin rounded-full border-2 border-white/25 border-t-indigo-300',
+        className,
+      )}
+    />
+  );
+}
+
+/**
+ * 確認ダイアログ。誤タップで取り返しのつかない操作（パス / GM退出など）を防ぐために使う。
+ */
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = 'OK',
+  cancelLabel = 'キャンセル',
+  tone = 'danger',
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description?: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'primary';
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+  // .card の backdrop-filter は fixed の基準になるため、必ず body 直下に出す
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="card animate-float-up w-full max-w-sm p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-lg font-black text-white">{title}</div>
+        {description && (
+          <div className="mt-2 text-sm leading-relaxed text-slate-300">{description}</div>
+        )}
+        <div className="mt-5 flex gap-2">
+          <Button variant="soft" className="flex-1" onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={tone === 'danger' ? 'danger' : 'primary'}
+            className="flex-1"
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

@@ -160,6 +160,8 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
         数字ボタン → 演算子 → もう1つの数字、の順にタップで計算。
         <br />
         出題される問題には必ず解が存在します（ソルバーによる事前チェック済み）。
+        <br />
+        ルームとスコア・履歴・チャットは、最終アクセスから24時間で自動削除されます。
       </div>
     </div>
   );
