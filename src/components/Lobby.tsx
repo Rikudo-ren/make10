@@ -5,6 +5,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { Button, Card, ConfirmDialog, SectionTitle } from './ui';
 import { IconCheck, IconCopy, IconCrown, IconGear, IconPlay, IconUsers } from './icons';
 import { TeamBadge } from './TeamBadge';
+import { TeamPicker } from './TeamPicker';
 import { TEAM_DEFS } from '../lib/teams';
 import { playSe } from '../lib/audio';
 import { cn } from '../utils/cn';
@@ -200,6 +201,29 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
                     チーム戦は{settings.teamCount}人以上そろわないと開始できません
                   </p>
                 )}
+              </div>
+            )}
+            {isTeam && me && !(typeof me.teamId === 'number' && me.teamId >= 0 && me.teamId < settings.teamCount) && (
+              <div className="mt-3 border border-cyan-300/30 bg-cyan-400/5 p-2.5">
+                <div className="label jp mb-1 text-[9px] tracking-[.18em] text-cyan-200/80">
+                  あなたの所属が未定です
+                </div>
+                <p className="jp mb-2 text-[10px] leading-relaxed text-slate-400">
+                  メンバーを見て、入りたいチームを選んでください。
+                  {settings.teamAssignMode !== 'manual' && (
+                    <>（開始時にチーム分け設定で振り分け直される場合があります）</>
+                  )}
+                </p>
+                <TeamPicker
+                  teams={TEAM_DEFS.slice(0, settings.teamCount).map((t) => ({
+                    teamId: t.id,
+                    members: players
+                      .filter((p) => p.teamId === t.id)
+                      .map((p) => ({ name: p.name, score: p.score ?? 0 })),
+                  }))}
+                  selected={null}
+                  onSelect={(teamId) => void ctrl.joinTeam(teamId)}
+                />
               </div>
             )}
             {isGM && (

@@ -5,6 +5,7 @@ import {
   computeIndividualStandings,
   computeTeamStandings,
   getWinningTeams,
+  pickJoinTeamId,
 } from '../src/lib/teams.ts';
 
 const players = (...rows) => rows.map(([uid, score, teamId]) => ({ uid, name: uid, score, teamId }));
@@ -162,6 +163,18 @@ test('個人成績: チーム所属を保ったまま得点順に並び、1位�
   assert.equal(rows[0].firstPlaceCount, 1); // b は round 1 で1位
   assert.equal(rows[1].correctCount, 3); // c は3ラウンド正解
   assert.equal(rows[2].score, 10);
+});
+
+test('途中参加: 保存済みの所属を最優先で復元し、本人の選択が次に来る', () => {
+  const list = players(['a', 0, 0], ['b', 0, 0], ['c', 0, 1]);
+  // 再参加（teamId=1 が保存済み）なら、本人が 0 を選んでも保存済みを優先
+  assert.equal(pickJoinTeamId({ players: list, teamCount: 3, existingTeamId: 1, requestedTeamId: 0 }), 1);
+  // 新規参加で本人が選んだチーム
+  assert.equal(pickJoinTeamId({ players: list, teamCount: 3, requestedTeamId: 2 }), 2);
+  // どちらも無ければ人数が一番少ないチーム（C は0人）
+  assert.equal(pickJoinTeamId({ players: list, teamCount: 3 }), 2);
+  // 不正な希望は無視して最少人数へ
+  assert.equal(pickJoinTeamId({ players: list, teamCount: 2, requestedTeamId: 9 }), 1);
 });
 
 test('集計: 未所属のプレイヤーはどのチームにも数えない', () => {

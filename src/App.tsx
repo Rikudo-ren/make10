@@ -101,7 +101,8 @@ export default function App() {
         error={ctrl.error}
         authError={ctrl.authError}
         onCreate={(name) => ctrl.createRoom(name)}
-        onJoin={(code, name) => ctrl.joinRoom(code, name)}
+        onPeek={(code) => ctrl.peekRoom(code)}
+        onJoin={(code, name, teamId) => ctrl.joinRoom(code, name, teamId)}
         onSolo={() => setSolo(true)}
       />
     );

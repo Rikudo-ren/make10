@@ -5,6 +5,7 @@ import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
 import { ChatComposer } from './ChatDock';
 import { TeamBadge } from './TeamBadge';
+import { TeamPicker } from './TeamPicker';
 import { IndividualStandings } from './IndividualStandings';
 import {
   computeIndividualStandings,
@@ -14,7 +15,7 @@ import {
   WIN_CONDITION_LABEL,
   WIN_CONDITION_UNIT,
 } from '../lib/teams';
-import { Button, Card, RankBadge, SectionTitle, formatMs } from './ui';
+import { Button, Card, ConfirmDialog, RankBadge, SectionTitle, formatMs } from './ui';
 import { IconAlert, IconArrowRight, IconCheck, IconClose, IconCrown, IconTrophy, IconUsers } from './icons';
 import { playSe } from '../lib/audio';
 import { cn } from '../utils/cn';
@@ -99,6 +100,9 @@ const COUNTDOWN_MS = 3000;
 export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const { room, players, uid, isGM } = ctrl;
   const [tick, setTick] = useState(0);
+  const [confirmForcePass, setConfirmForcePass] = useState(false);
+  const [confirmAbort, setConfirmAbort] = useState(false);
+  const [gmBusy, setGmBusy] = useState(false);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 100);
     return () => clearInterval(id);
@@ -230,6 +234,29 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
     });
   }, [isTeam, room?.history, r, players, settings.teamCount, settings.teamWinCondition, matchStartIndex]);
   const myTeamId = uid ? players.find((p) => p.uid === uid)?.teamId : null;
+  // 途中参加などで自分の所属がまだ無いときは、メンバーを見て自分で選ぶ
+  const needsMyTeam =
+    isTeam &&
+    !!uid &&
+    players.some((p) => p.uid === uid) &&
+    !(typeof myTeamId === 'number' && myTeamId >= 0 && myTeamId < settings.teamCount);
+  const pickerTeams = TEAM_DEFS.slice(0, settings.teamCount).map((def) => ({
+    teamId: def.id,
+    members: players
+      .filter((p) => p.teamId === def.id)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .map((p) => ({ name: p.name, score: p.score ?? 0 })),
+  }));
+
+  const runGmAction = async (fn: () => Promise<void>) => {
+    if (gmBusy) return;
+    setGmBusy(true);
+    try {
+      await fn();
+    } finally {
+      setGmBusy(false);
+    }
+  };
 
   // 個人成績（チーム順位とは別に、対戦中も常に確認できる）
   const individualRows = useMemo(() => {
@@ -340,6 +367,27 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </div>
           ))}
         </div>
+      )}
+
+      {needsMyTeam && (
+        <Card accent className="mb-3.5 p-4">
+          <div className="label jp text-cyan-200/85">チームを選んでください</div>
+          <p className="jp mt-1 text-[11px] leading-relaxed text-slate-400">
+            チーム戦の途中参加です。各チームのメンバーを見て、入りたいチームをタップするとそのまま参加できます
+            {typeof players.find((p) => p.uid === uid)?.score === 'number' && (
+              <>（保存されていた得点はそのまま引き継がれます）</>
+            )}
+            。
+          </p>
+          <div className="mt-3">
+            <TeamPicker
+              teams={pickerTeams}
+              selected={null}
+              onSelect={(teamId) => void ctrl.joinTeam(teamId)}
+              showScores
+            />
+          </div>
+        </Card>
       )}
 
       <div className="grid gap-3.5 lg:grid-cols-[1fr_268px]">
@@ -519,6 +567,40 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </Card>
           )}
 
+          {/* GM専用: ラウンド確定の強制と、試合そのものの強制終了 */}
+          {isGM && (
+            <Card>
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <SectionTitle>GM操作</SectionTitle>
+                <span className="jp text-[9px] text-amber-300/80">GMのみ</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {room.status === 'playing' && !judging && (
+                  <Button
+                    variant="soft"
+                    disabled={gmBusy}
+                    className="w-full px-3 py-2.5 text-[10px]"
+                    onClick={() => setConfirmForcePass(true)}
+                  >
+                    残りの全員をパスして確定
+                  </Button>
+                )}
+                <Button
+                  variant="danger"
+                  disabled={gmBusy}
+                  className="w-full px-3 py-2.5 text-[10px]"
+                  onClick={() => setConfirmAbort(true)}
+                >
+                  試合を強制終了して設定へ戻る
+                </Button>
+              </div>
+              <p className="jp mt-2 text-[9px] leading-relaxed text-slate-500">
+                強制パスでは、既に正解した人には順位どおり得点が入ります。
+                強制終了してもルーム・得点・所属チームは消えません。
+              </p>
+            </Card>
+          )}
+
         </div>
       </div>
 
@@ -676,19 +758,29 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               />
             </div>
 
-            <div className="mt-6 flex justify-center">
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
               {isGM ? (
-                <Button onClick={ctrl.nextRound} className="gap-2">
-                  {roundNo >= settings.roundCount ? (
-                    <>
-                      <IconTrophy size={14} /> 最終結果へ
-                    </>
-                  ) : (
-                    <>
-                      次の問題へ <IconArrowRight size={14} />
-                    </>
-                  )}
-                </Button>
+                <>
+                  <Button onClick={ctrl.nextRound} className="gap-2">
+                    {roundNo >= settings.roundCount ? (
+                      <>
+                        <IconTrophy size={14} /> 最終結果へ
+                      </>
+                    ) : (
+                      <>
+                        次の問題へ <IconArrowRight size={14} />
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={gmBusy}
+                    className="gap-2 px-3 py-2.5 text-[10px]"
+                    onClick={() => setConfirmAbort(true)}
+                  >
+                    強制終了して設定へ戻る
+                  </Button>
+                </>
               ) : (
                 <span className="jp text-[11px] text-slate-400">GMが次の問題を出題するのを待っています…</span>
               )}
@@ -696,6 +788,47 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmForcePass}
+        title="残りの全員をパスして確定しますか？"
+        description={
+          <>
+            まだ正解していない全員をパス扱いにして、この問題を終了します。
+            <br />
+            <b className="text-emerald-300">既に正解した人には、順位どおり得点が入ります。</b>
+          </>
+        }
+        confirmLabel="パスして確定"
+        cancelLabel="やめる"
+        tone="primary"
+        onConfirm={() => {
+          setConfirmForcePass(false);
+          void runGmAction(ctrl.forcePassRemaining);
+        }}
+        onCancel={() => setConfirmForcePass(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmAbort}
+        title="試合を強制終了しますか？"
+        description={
+          <>
+            進行中の試合を止めて、ロビー（ゲーム設定）に戻ります。
+            <br />
+            進行中の問題は破棄されますが、
+            <b className="text-cyan-200">プレイヤー・得点・所属チームはそのまま残ります</b>
+            （ルームは解散しません）。
+          </>
+        }
+        confirmLabel="強制終了して設定へ戻る"
+        cancelLabel="やめる"
+        onConfirm={() => {
+          setConfirmAbort(false);
+          void runGmAction(ctrl.forceEndToLobby);
+        }}
+        onCancel={() => setConfirmAbort(false)}
+      />
     </div>
   );
 }

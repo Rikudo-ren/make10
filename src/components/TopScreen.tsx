@@ -2,20 +2,63 @@ import { useState } from 'react';
 import { Button, Card } from './ui';
 import { IconArrowRight, IconBolt, IconGrid, IconPlay, IconTarget, IconUsers } from './icons';
 import { playSe } from '../lib/audio';
+import type { JoinPreview } from '../lib/useRoom';
+import { TeamPicker } from './TeamPicker';
+import { pickJoinTeamId } from '../lib/teams';
+import { TEAM_DEFS } from '../lib/teams';
 
 interface Props {
   busy: boolean;
   error: string | null;
   authError: string | null;
   onCreate: (name: string) => void;
-  onJoin: (code: string, name: string) => void;
+  onPeek: (code: string) => Promise<JoinPreview | null>;
+  onJoin: (code: string, name: string, teamId?: number | null) => void;
   onSolo: () => void;
 }
 
-export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: Props) {
+const STATUS_LABEL: Record<JoinPreview['status'], string> = {
+  lobby: 'ロビーで待機中',
+  playing: '対戦中（途中参加できます）',
+  judging: '結果発表中（次の問題から参加できます）',
+  finished: '試合終了（ロビーに戻れば再戦に参加できます）',
+};
+
+export function TopScreen({ busy, error, authError, onCreate, onPeek, onJoin, onSolo }: Props) {
   const [name, setName] = useState(() => localStorage.getItem('make10.name') ?? '');
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<'none' | 'join'>('none');
+  const [preview, setPreview] = useState<JoinPreview | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<number | null>(null);
+
+  /** 参加ボタン: チーム戦で所属が未保存なら、まずチーム選択を出す */
+  const handleJoin = async () => {
+    const trimmed = code.trim().toUpperCase();
+    if (!trimmed) return;
+    if (preview && preview.code === trimmed && preview.needsTeamChoice) {
+      if (selectedTeam === null) return;
+      playSe('join');
+      onJoin(trimmed, name.trim(), selectedTeam);
+      return;
+    }
+    const pv = await onPeek(trimmed);
+    if (!pv) return;
+    if (pv.needsTeamChoice) {
+      setPreview(pv);
+      // 既定は「人数が一番少ないチーム」を選んでおく（あとから変更可）
+      setSelectedTeam(
+        pickJoinTeamId({
+          players: pv.teams.flatMap((t) =>
+            t.members.map((m) => ({ uid: m.name, teamId: t.teamId })),
+          ),
+          teamCount: pv.teamCount,
+        }),
+      );
+      return;
+    }
+    playSe('join');
+    onJoin(trimmed, name.trim());
+  };
 
   const save = (n: string) => {
     setName(n);
@@ -148,7 +191,11 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
               placeholder="ABC123"
               maxLength={6}
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase());
+                setPreview(null);
+                setSelectedTeam(null);
+              }}
               inputMode="text"
               autoCapitalize="characters"
             />
@@ -171,15 +218,16 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
           {mode === 'join' ? (
             <Button
               variant="magenta"
-              disabled={!canGo || code.length < 4}
-              onClick={() => {
-                playSe('join');
-                onJoin(code, name.trim());
-              }}
+              disabled={!canGo || code.length < 4 || (preview?.needsTeamChoice && selectedTeam === null)}
+              onClick={() => void handleJoin()}
               className="py-4"
             >
               <IconArrowRight size={14} />
-              このコードで参加
+              {preview?.needsTeamChoice
+                ? selectedTeam !== null
+                  ? `${TEAM_DEFS[selectedTeam]?.label ?? ''}で参加`
+                  : 'チームを選んで参加'
+                : 'このコードで参加'}
             </Button>
           ) : (
             <Button
@@ -196,6 +244,40 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
             </Button>
           )}
         </div>
+
+        {preview?.needsTeamChoice && (
+          <div className="animate-float-up mt-5 border border-white/10 bg-black/30 p-4">
+            <div className="label jp text-cyan-200/80">参加するチームを選んでください</div>
+            <p className="jp mt-1.5 text-[11px] leading-relaxed text-slate-400">
+              このルームはチーム戦です（{STATUS_LABEL[preview.status]}／{preview.playerCount}人参加中）。
+              各チームのメンバーを見て、入りたいチームをタップしてください。
+              {preview.status === 'lobby' && preview.teamAssignMode !== 'manual' && (
+                <>
+                  <br />
+                  ※ ロビーから試合を始める場合は、開始時にチーム分け設定
+                  （{preview.teamAssignMode === 'random' ? 'ランダム' : 'バランス'}）で振り分け直されます。
+                  対戦中の途中参加では、選んだチームにそのまま入ります。
+                </>
+              )}
+              {preview.isReturning && preview.myScore !== null && (
+                <>
+                  <br />
+                  前回の記録が残っています: <b className="text-cyan-200">{preview.myScore}点</b>
+                  を引き継いで復帰します（所属チームだけ選んでください）。
+                </>
+              )}
+            </p>
+            <div className="mt-3">
+              <TeamPicker
+                teams={preview.teams}
+                selected={selectedTeam}
+                onSelect={setSelectedTeam}
+                showScores={preview.status !== 'lobby'}
+                disabled={busy}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="my-5 flex items-center gap-3">
           <span className="hairline flex-1" />
