@@ -5,6 +5,7 @@ import { Lobby } from './components/Lobby';
 import { GameScreen } from './components/GameScreen';
 import { FinalResult } from './components/FinalResult';
 import { SoloScreen } from './components/SoloScreen';
+import { RoomHealthNotice } from './components/RoomHealthNotice';
 import { Spinner } from './components/ui';
 
 export default function App() {
@@ -50,6 +51,8 @@ export default function App() {
   return (
     <div className="bg-scene min-h-screen text-slate-100">
       {content}
+
+      {!solo && <RoomHealthNotice ctrl={ctrl} />}
 
       {showPreparing && (
         <div className="animate-fade-in fixed inset-0 z-[80] grid place-items-center bg-black/80 p-6 backdrop-blur-md">

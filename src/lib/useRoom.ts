@@ -14,7 +14,18 @@ import {
 } from 'firebase/database';
 import { app, auth, db, ensureAnonymousAuth } from '../firebase';
 import { generatePuzzleAsync, puzzleKey, type GenerateProgress } from './puzzle';
+import {
+  hasAnyPlayer,
+  HEARTBEAT_MS,
+  ROOM_TTL_MS,
+  sweepOnce,
+  SWEEP_INTERVAL_MS,
+  TOUCH_THROTTLE_MS,
+  type RoomIndex,
+} from './roomCleanup';
 import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } from './types';
+
+export { EMPTY_ROOM_GRACE_MS, ROOM_TTL_MS, SWEEP_INTERVAL_MS } from './roomCleanup';
 
 /** 問題生成の締切(ms)。これを超えたら諦めてエラーを出す（UIは固まらない） */
 const GENERATE_DEADLINE_MS = 3000;
@@ -25,23 +36,11 @@ export const CHAT_MAX_LEN = 140;
 /** 連投防止(ms) */
 const CHAT_COOLDOWN_MS = 500;
 /**
- * ルーム（スコア・履歴・解答・チャット）の保存期間。
- * 最終アクセスから24時間で、次に誰かがアプリを開いたときに掃除される。
+ * 旧バージョンで作られた（期限情報の無い）ルームの移行スキャン間隔。
+ * これらも「誰もいなければ即削除」の対象になる。
  */
-export const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
-/** 室内の操作や在室で TTL を延長する間隔 */
-const TOUCH_THROTTLE_MS = 60 * 1000;
-/** 期限切れスイープの実行間隔 */
-const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
-/** 旧バージョンで作られた（期限情報の無い）ルームの移行スキャン間隔 */
 const LEGACY_SCAN_KEY = 'make10.legacyScanAt';
 const LEGACY_SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
-/**
- * ルーム一覧（TTL掃除用の軽量インデックス）。
- * rooms/{code} を全件読まずに済むよう、コードと期限だけを持つ。
- */
-type RoomIndexEntry = Record<string, { expiresAt?: number; createdAt?: number }>;
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -98,6 +97,8 @@ export function useRoom() {
   const selfLeaveRef = useRef(false);
   /** ルームTTLの延長を最後に行った時刻 */
   const lastTouchRef = useRef(0);
+  /** 自分の準備状態（再接続時に復元するため） */
+  const myReadyRef = useRef<boolean>(false);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
   const finalizedRef = useRef<Set<number>>(new Set());
   const startingRef = useRef(false);
@@ -202,29 +203,33 @@ export function useRoom() {
   }, [serverNow]);
 
   /**
-   * 期限切れ（24時間アクセスのなかった）ルームを削除する。
-   * Cloud Functions を使わずに済むよう、アプリ起動中にクライアント側で掃除する。
-   * 失敗（権限が無い等）してもゲーム進行には影響しないので握りつぶす。
+   * ルームの掃除。
+   *
+   * - 最終アクセスから24時間経過 → 削除（期限切れ）
+   * - **在室者が0人 → 作成から15秒の猶予を過ぎていれば即削除**
+   *
+   * 「最近ハートビートが来ている部屋」は在室確認すらしないので、
+   * 誰かが入っている部屋が誤って消えることはない。
+   * Cloud Functions を使わずに済むよう、アプリを開いているクライアントが実行する。
    */
-  const sweepExpiredRooms = useCallback(async () => {
+  const sweepRooms = useCallback(async () => {
     try {
-      const nowMs = serverNow();
-      const snap = await get(ref(db, 'rooms/index'));
-      const index = (snap.val() ?? {}) as RoomIndexEntry;
-      for (const [code, entry] of Object.entries(index)) {
-        const exp = entry?.expiresAt;
-        if (typeof exp === 'number' && Number.isFinite(exp)) {
-          if (exp <= nowMs) {
-            await remove(ref(db, `rooms/${code}`));
-            await remove(ref(db, `rooms/index/${code}`));
-          }
-        } else {
-          // 期限情報が無い（旧バージョンで作られた）ルームは、今から24時間で登録し直す
-          await set(ref(db, `rooms/index/${code}/expiresAt`), nowMs + ROOM_TTL_MS);
-        }
-      }
+      await sweepOnce({
+        now: serverNow(),
+        readIndex: async () => {
+          const snap = await get(ref(db, 'rooms/index'));
+          return (snap.val() ?? {}) as RoomIndex;
+        },
+        readPlayers: async (code) => {
+          const snap = await get(ref(db, `rooms/${code}/players`));
+          return snap.val();
+        },
+        apply: async (updates) => {
+          await update(ref(db), updates);
+        },
+      });
     } catch {
-      /* 掃除できなくてもOK */
+      /* 掃除できなくてもゲーム進行には影響しない */
     }
   }, [serverNow]);
 
@@ -251,7 +256,7 @@ export function useRoom() {
       if (codes.length === 0) return;
 
       const idxSnap = await get(ref(db, 'rooms/index'));
-      const index = (idxSnap.val() ?? {}) as RoomIndexEntry;
+      const index = (idxSnap.val() ?? {}) as RoomIndex;
       const nowMs = serverNow();
       const updates: Record<string, number> = {};
       for (const code of codes) {
@@ -295,15 +300,16 @@ export function useRoom() {
     [serverNow],
   );
 
-  // 24時間TTL: 起動時と10分おきに期限切れルームを掃除する
-  // （Cloud Functions なしで動かすため、アプリを開いた人が掃除する）
+  // 掃除: 起動時 + 20秒おき。
+  // 「誰もいない部屋」は作成から20秒で、期限切れは24時間で削除する。
+  // （Cloud Functions なしで動かすため、アプリを開いている人が掃除する）
   useEffect(() => {
     if (!uid) return; // 未認証だと権限エラーになるので認証後に実行
     void migrateLegacyRooms();
-    void sweepExpiredRooms();
-    const id = setInterval(() => void sweepExpiredRooms(), SWEEP_INTERVAL_MS);
+    void sweepRooms();
+    const id = setInterval(() => void sweepRooms(), SWEEP_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [migrateLegacyRooms, sweepExpiredRooms, uid]);
+  }, [migrateLegacyRooms, sweepRooms, uid]);
 
   /** 実際の操作（解答・パス・チャット等）があったときにTTLを延長する（1分に1回まで） */
   const markActivity = useCallback(() => {
@@ -316,6 +322,50 @@ export function useRoom() {
   // コールバックの依存配列を増やさずにどこからでも呼べるようにしておく
   const markActivityRef = useRef(markActivity);
   markActivityRef.current = markActivity;
+
+  // 在室中は20秒おきにハートビート（タブを開いている限り「誰もいない部屋」にならない）
+  useEffect(() => {
+    if (!uid || !roomId) return;
+    markActivityRef.current();
+    const id = setInterval(() => markActivityRef.current(), HEARTBEAT_MS);
+    return () => clearInterval(id);
+  }, [roomId, uid]);
+
+  /**
+   * 再接続時の在室復元。
+   * 通信が切れると onDisconnect が players/{uid}/name を消すため、
+   * 戻ってきたときに名前（と準備状態）を書き直す。
+   * すでにルームが削除されていた場合は、中途半端な部屋を作らないよう何もしない。
+   */
+  useEffect(() => {
+    const unsub = onValue(ref(db, '.info/connected'), (snap) => {
+      if (snap.val() !== true) return;
+      const code = roomIdRef.current;
+      const myUid = uidRef.current;
+      const data = roomRef.current;
+      if (!code || !myUid || !data) return;
+      void (async () => {
+        try {
+          const gm = await get(ref(db, `rooms/${code}/gmUid`));
+          if (!gm.exists()) return; // 削除済み → 購読側でトップ画面に戻る
+          // 同じコードで別のルームが作り直されていた場合は触らない
+          if (data.gmUid && gm.val() !== data.gmUid) return;
+          const me = data.players?.[myUid];
+          const name =
+            (me?.name && me.name.length > 0 ? me.name : null) ??
+            localStorage.getItem('make10.name') ??
+            'プレイヤー';
+          const isReady = myReadyRef.current ?? data.gmUid === myUid;
+          await update(ref(db, `rooms/${code}/players/${myUid}`), { name, isReady });
+          attachPresence(code, myUid);
+          void touchRoom(code);
+        } catch {
+          /* noop */
+        }
+      })();
+    });
+    return () => unsub();
+  }, [attachPresence, touchRoom]);
 
   const createRoom = useCallback(
     async (name: string, settings: Settings = DEFAULT_SETTINGS) => {
@@ -345,6 +395,7 @@ export function useRoom() {
           createdAt: serverNow(),
         });
         lastTouchRef.current = Date.now();
+        myReadyRef.current = true;
         attachPresence(code, myUid);
         selfLeaveRef.current = false;
         localStorage.setItem('make10.room', code);
@@ -374,9 +425,9 @@ export function useRoom() {
           setError('そのルームコードは見つかりませんでした');
           return null;
         }
-        // 24時間アクセスが無かったルームは参加前に破棄する
+        // 期限切れ（24時間アクセスなし）のルームは参加前に破棄する
         if (await dropExpiredRoom(code)) {
-          setError('そのルームコードは見つかりませんでした（24時間経過したため削除されました）');
+          setError('そのルームは有効期限切れ（24時間アクセスなし）で削除されました');
           return null;
         }
         const data = snap.val() as RoomData;
@@ -389,7 +440,17 @@ export function useRoom() {
           isReady: false,
           rttMs: 0,
         });
+        // 掃除と競合して消された場合は、中途半端な部屋を作らずに戻る
+        const gmSnap = await get(ref(db, `rooms/${code}/gmUid`));
+        if (!gmSnap.exists()) {
+          await remove(ref(db, `rooms/${code}`)).catch(() => undefined);
+          await remove(ref(db, `rooms/index/${code}`)).catch(() => undefined);
+          localStorage.removeItem('make10.room');
+          setError('そのルームは解散されました');
+          return null;
+        }
         attachPresence(code, myUid);
+        myReadyRef.current = false;
         selfLeaveRef.current = false;
         await touchRoom(code);
         localStorage.setItem('make10.room', code);
@@ -449,6 +510,16 @@ export function useRoom() {
         } else {
           await remove(ref(db, `rooms/${code}/players/${myUid}/name`));
           await remove(ref(db, `rooms/${code}/players/${myUid}/isReady`));
+          // 退出した結果だれもいなくなったら、掃除を待たずにその場で消す
+          try {
+            const left = await get(ref(db, `rooms/${code}/players`));
+            if (!hasAnyPlayer(left.val())) {
+              await remove(ref(db, `rooms/${code}`));
+              await remove(ref(db, `rooms/index/${code}`));
+            }
+          } catch {
+            /* noop */
+          }
         }
       } catch {
         /* noop */
