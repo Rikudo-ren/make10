@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MAKE 10 BATTLE">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1522"/>
+      <stop offset="0.55" stop-color="#050a12"/>
+      <stop offset="1" stop-color="#03060c"/>
+    </linearGradient>
+    <linearGradient id="neon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c8fbff"/>
+      <stop offset="0.5" stop-color="#22e0ff"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="aura" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22e0ff" stop-opacity="0.42"/>
+      <stop offset="0.7" stop-color="#22e0ff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#22e0ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="frame">
+      <path d="M14 1h36a13 13 0 0 1 13 13v36a13 13 0 0 1-13 13H14A13 13 0 0 1 1 50V14A13 13 0 0 1 14 1z"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="64" height="64" fill="url(#bg)"/>
+    <circle cx="32" cy="30" r="30" fill="url(#aura)"/>
+
+    <!-- グリッド -->
+    <g stroke="#22e0ff" stroke-opacity="0.16" stroke-width="0.5">
+      <path d="M0 16h64M0 32h64M0 48h64M16 0v64M32 0v64M48 0v64"/>
+    </g>
+    <path d="M0 50.8h64" stroke="#ff3ec8" stroke-opacity="0.28" stroke-width="0.5"/>
+
+    <!-- 10 のグリフ（マゼンタの残像 + シアンの本体） -->
+    <g fill="none" stroke-linecap="square" stroke-linejoin="miter">
+      <g stroke="#ff3ec8" stroke-opacity="0.5" stroke-width="4.8" transform="translate(-1.2 0.8)">
+        <path d="M18.6 21.8L24.6 16v32"/>
+        <ellipse cx="44" cy="32" rx="9" ry="16"/>
+      </g>
+      <g stroke="url(#neon)" stroke-width="4.4" filter="url(#glow)">
+        <path d="M18.6 21.8L24.6 16v32"/>
+        <ellipse cx="44" cy="32" rx="9" ry="16"/>
+      </g>
+      <path d="M14 51.6h7.5" stroke="#22e0ff" stroke-width="1.6"/>
+      <path d="M40.5 51.6h8" stroke="#ff3ec8" stroke-width="1.6"/>
+    </g>
+  </g>
+
+  <!-- HUD 枠 -->
+  <path d="M14 1.6h36a12.4 12.4 0 0 1 12.4 12.4v36A12.4 12.4 0 0 1 50 62.4H14A12.4 12.4 0 0 1 1.6 50V14A12.4 12.4 0 0 1 14 1.6z"
+        fill="none" stroke="#22e0ff" stroke-opacity="0.55" stroke-width="1.2"/>
+  <path d="M1.6 21V14A12.4 12.4 0 0 1 14 1.6h7" fill="none" stroke="#9bf3ff" stroke-width="1.6"/>
+  <path d="M62.4 43v7A12.4 12.4 0 0 1 50 62.4h-7" fill="none" stroke="#ff3ec8" stroke-width="1.6"/>
+</svg>

@@ -115,7 +115,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
       </div>
 
       <div>
-        <div className="mb-2 text-xs font-semibold text-slate-300">使用可能な演算子</div>
+                <div className="label jp mb-2 tracking-[.18em] text-cyan-200/70">使用可能な演算子</div>
         <div className="flex flex-wrap gap-2">
           {(['+', '-', '*', '/'] as Op[]).map((op) => (
             <Chip
@@ -218,7 +218,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
         </Field>
       </div>
       {dis && (
-        <p className="text-xs text-slate-400">
+        <p className="jp text-[11px] leading-relaxed text-slate-500">
           設定を変更できるのはゲームマスター（ルーム作成者）だけです。
         </p>
       )}
