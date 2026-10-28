@@ -48,7 +48,9 @@ npm run serve    # ビルド済み dist/ を gzip 付きで配信（確認用・
 - 絵文字は使わず、ラインアイコン（`src/components/icons.tsx`）と `1位` `2位` `3位` の
   六角バッジで状態を表現
 - 背景は遠近グリッド＋スキャンライン＋走査線のアニメーション（`prefers-reduced-motion` 対応）
-- favicon / PWA アイコンは `public/`（`favicon.svg` から PNG を書き出し・減色して合計 47KB）
+- favicon / PWA アイコンは `public/`。**2枚のネオンタイル（1=シアン / 0=マゼンタ）**をモチーフにした
+  SVG（0.6KB）から PNG を書き出し、減色して合計 15KB
+  （`favicon-16/32.png` / `apple-touch-icon.png` / `icon-192/512.png` / マスカブル版）
 - 効果音・BGM・フォントも `public/` 配下（`/audio`・`/fonts`）。
   ビルドすると本体は `dist/index.html` 単体（**約 454KB / gzip 131KB**）になり、
   音声は必要なときだけ読み込まれる
