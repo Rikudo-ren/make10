@@ -1,7 +1,7 @@
 # MAKE 10 BATTLE / メイク10バトル
 
 出された数字を四則演算でつないで目標値を作る、リアルタイム対戦パズル。
-React + Vite + Tailwind CSS + Firebase Realtime Database（匿名認証）。
+React 互換 API（Preact）+ Vite + Tailwind CSS + Firebase Realtime Database（匿名認証）。
 サイバー / HUD 風のネオン UI と、CC0 素材による BGM・効果音を同梱しています。
 
 ## 起動
@@ -9,7 +9,8 @@ React + Vite + Tailwind CSS + Firebase Realtime Database（匿名認証）。
 ```bash
 npm install
 npm run dev      # 開発サーバー
-npm run build    # dist/index.html に単一ファイルで出力
+npm run build    # dist/ に出力（index.html は単一ファイル + 音声/フォント/アイコン）
+npm run serve    # ビルド済み dist/ を gzip 付きで配信（確認用・PORT で変更可）
 ```
 
 ## 主な機能
@@ -23,8 +24,10 @@ npm run build    # dist/index.html に単一ファイルで出力
     ログには入力欄とクイック返信も入っているので、そこから送信もできる
   - 対戦中はプレイエリア下の1行バーからすぐ送信できる
 - **サウンドシステム**
-  - BGM（Komiku / トップ・対戦・結果）と効果音19種（Kenney）。すべて CC0 の外部アセットを
-    小節単位のループ加工して同梱
+  - BGM（Komiku / トップ・対戦・結果）と効果音19種。すべて CC0（正解音のみ本アプリ用に新規制作）。
+    外部アセットを小節単位でループ加工して同梱
+  - 正解音は A メジャーの上昇アルペジオ＋サブベースの専用設計（`docs/AUDIO.md`）
+  - 既定音量ははっきり聞こえる側（BGM 0.75 / SE 0.85）に設定
   - 画面右下の AUDIO SYSTEM から **BGM / 効果音の ON・OFF と音量**を個別に切り替え（端末ごとに保存）
   - ブラウザの自動再生制限に合わせ、最初のタップで自動的に有効化
 - パス（降参）と取り消し（確認ダイアログなし・画面左側に配置）
@@ -43,12 +46,24 @@ npm run build    # dist/index.html に単一ファイルで出力
 - 絵文字は使わず、ラインアイコン（`src/components/icons.tsx`）と `1位` `2位` `3位` の
   六角バッジで状態を表現
 - 背景は遠近グリッド＋スキャンライン＋走査線のアニメーション（`prefers-reduced-motion` 対応）
-- favicon / PWA アイコンは `public/`（`favicon.svg` から PNG を書き出し）
+- favicon / PWA アイコンは `public/`（`favicon.svg` から PNG を書き出し・減色して合計 47KB）
 - 効果音・BGM・フォントも `public/` 配下（`/audio`・`/fonts`）。
-  ビルドすると本体は `dist/index.html` 単体（約 630KB / gzip 184KB）になり、
+  ビルドすると本体は `dist/index.html` 単体（**約 454KB / gzip 131KB**）になり、
   音声は必要なときだけ読み込まれる
 
+## 軽量化メモ
+
+- ランタイムは **Preact（`preact/compat`）**。`vite.config.ts` の alias で `react` /
+  `react-dom` を Preact に差し替えており、コードは React の hooks / `createPortal` のまま。
+  これだけでバンドルが約 180KB（gzip 57KB）減る
+- 音声・フォント・アイコンは `public/` に置き、URL 参照のみ（HTML への base64 埋め込みをやめた）
+- 効果音はピークを揃えてから再エンコード（モノラル 80kbps）
+- アイコン PNG は 160〜200 色に減色（412KB → 47KB）
+- 初期表示に不要なものは `preload` しない。Firebase へは `preconnect` だけ張る
+
 ## 配信について
+
+`npm run serve` は dist/ をそのまま（gzip + 長期キャッシュ付きで）配信する確認用サーバーです。
 
 `npm run build` の出力は `dist/` フォルダごと配信してください
 （`dist/index.html` に加えて `audio/`・`fonts/`・アイコン類が必要です）。

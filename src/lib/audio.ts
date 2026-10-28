@@ -68,27 +68,30 @@ const SE_SRC: Record<SeName, string> = {
 /** unlock 直後に先読みしておく効果音（よく使うものだけ） */
 const PRELOAD_SE: SeName[] = ['ui', 'toggle', 'tile', 'op', 'correct', 'wrong', 'tick', 'chatRecv'];
 
-/** SE ごとの音量バランス（聞こえ方を揃える） */
+/**
+ * SE ごとの音量バランス。
+ * 音源側をピーク -1.2dB 前後に揃えてあるので、ここでは「出しゃばり具合」だけを調整する。
+ */
 const SE_GAIN: Record<SeName, number> = {
-  tile: 0.7,
-  op: 0.6,
-  calc: 0.8,
-  correct: 0.9,
-  wrong: 0.8,
-  tick: 0.5,
-  go: 0.9,
-  roundEnd: 0.85,
+  tile: 0.85,
+  op: 0.8,
+  calc: 0.9,
+  correct: 1,
+  wrong: 0.9,
+  tick: 0.6,
+  go: 1,
+  roundEnd: 0.95,
   finish: 1,
-  chatSend: 0.55,
-  chatRecv: 0.5,
-  join: 0.6,
-  leave: 0.55,
-  start: 0.85,
-  pass: 0.55,
-  ui: 0.5,
-  hover: 0.28,
-  toggle: 0.55,
-  laser: 0.5,
+  chatSend: 0.6,
+  chatRecv: 0.55,
+  join: 0.7,
+  leave: 0.6,
+  start: 0.95,
+  pass: 0.6,
+  ui: 0.55,
+  hover: 0.3,
+  toggle: 0.6,
+  laser: 0.55,
 };
 
 export interface SoundSettings {
@@ -99,13 +102,18 @@ export interface SoundSettings {
 }
 
 const STORAGE_KEY = 'make10.audio';
+/** 保存フォーマットのバージョン（音量の既定値を変えたら上げる） */
+const STORAGE_VERSION = 2;
 
 const DEFAULT_STATE: SoundSettings = {
   bgm: true,
   se: true,
-  bgmVolume: 0.45,
-  seVolume: 0.7,
+  bgmVolume: 0.75,
+  seVolume: 0.85,
 };
+
+/** 既定音量を上げた際の移行用（旧既定値のままの人だけ新しい既定値へ寄せる） */
+const LEGACY_DEFAULTS = { bgmVolume: 0.45, seVolume: 0.7 };
 
 function loadState(): SoundSettings {
   try {
@@ -113,11 +121,15 @@ function loadState(): SoundSettings {
       | Partial<SoundSettings>
       | null;
     if (!raw) return { ...DEFAULT_STATE };
+    const legacy = (raw as { v?: number }).v !== STORAGE_VERSION;
+    const bgmVolume = clamp01(raw.bgmVolume ?? DEFAULT_STATE.bgmVolume);
+    const seVolume = clamp01(raw.seVolume ?? DEFAULT_STATE.seVolume);
     return {
       bgm: typeof raw.bgm === 'boolean' ? raw.bgm : DEFAULT_STATE.bgm,
       se: typeof raw.se === 'boolean' ? raw.se : DEFAULT_STATE.se,
-      bgmVolume: clamp01(raw.bgmVolume ?? DEFAULT_STATE.bgmVolume),
-      seVolume: clamp01(raw.seVolume ?? DEFAULT_STATE.seVolume),
+      // 旧既定のまま触っていない人だけ、新しい（大きめの）既定音量へ移行する
+      bgmVolume: legacy && bgmVolume === LEGACY_DEFAULTS.bgmVolume ? DEFAULT_STATE.bgmVolume : bgmVolume,
+      seVolume: legacy && seVolume === LEGACY_DEFAULTS.seVolume ? DEFAULT_STATE.seVolume : seVolume,
     };
   } catch {
     return { ...DEFAULT_STATE };
@@ -137,7 +149,7 @@ function emit() {
 
 function persist() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, v: STORAGE_VERSION }));
   } catch {
     /* 保存できなくても動作に影響なし */
   }
@@ -236,7 +248,7 @@ function fadeTo(el: HTMLAudioElement, target: number, ms: number, onDone?: () =>
 }
 
 function bgmTargetVolume() {
-  return clamp01(state.bgmVolume) * 0.9;
+  return clamp01(state.bgmVolume);
 }
 
 function applyBgmVolume() {
