@@ -152,7 +152,8 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 /**
- * 確認ダイアログ。誤タップで取り返しのつかない操作（パス / GM退出など）を防ぐために使う。
+ * 確認ダイアログ。取り返しのつかない操作（GMがルームを解散する等）を防ぐために使う。
+ * ※ パスは取り消せるので確認ダイアログを出さない。
  */
 export function ConfirmDialog({
   open,
