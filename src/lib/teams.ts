@@ -274,6 +274,30 @@ export function shuffled<T>(list: T[], rng: () => number = Math.random): T[] {
 }
 
 /**
+ * 途中参加した人が入るチームを決める。
+ * - 以前に所属していたチームが残っていれば、それを最優先で復元する（再入室時）
+ * - 本人が選んだチームが有効ならそれ
+ * - どちらも無ければ、人数が一番少ないチーム（同数なら番号の若い方）
+ */
+export function pickJoinTeamId(args: {
+  players: TeamPlayerInput[];
+  teamCount: number;
+  existingTeamId?: number | null;
+  requestedTeamId?: number | null;
+}): number {
+  const teamCount = clampTeamCount(args.teamCount);
+  if (isValidTeamId(args.existingTeamId, teamCount)) return Math.floor(Number(args.existingTeamId));
+  if (isValidTeamId(args.requestedTeamId, teamCount)) return Math.floor(Number(args.requestedTeamId));
+  const sizes = new Array<number>(teamCount).fill(0);
+  for (const p of args.players) {
+    if (p && isValidTeamId(p.teamId, teamCount)) sizes[Math.floor(Number(p.teamId))] += 1;
+  }
+  let best = 0;
+  for (let i = 1; i < teamCount; i++) if (sizes[i] < sizes[best]) best = i;
+  return best;
+}
+
+/**
  * チーム分けを行う。uid -> teamId を返す。
  * - balanced: スコア（直前のマッチ結果など）が高い順に並べ、蛇行（0,1,2,2,1,0…）で振り分ける。
  *   全員0点の初回は参加順のドラフトになる。

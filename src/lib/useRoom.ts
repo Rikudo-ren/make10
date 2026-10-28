@@ -25,7 +25,7 @@ import {
   type RoomIndex,
 } from './roomCleanup';
 import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } from './types';
-import { assignTeams, clampTeamCount } from './teams';
+import { assignTeams, clampTeamCount, isValidTeamId, pickJoinTeamId } from './teams';
 
 export { EMPTY_ROOM_GRACE_MS, ROOM_TTL_MS, SWEEP_INTERVAL_MS } from './roomCleanup';
 
@@ -62,6 +62,26 @@ function uniqueName(base: string, taken: string[]) {
   return `${trimmed}${Math.floor(Math.random() * 1000)}`.slice(0, 20);
 }
 
+
+/** 参加前にルームを覗いたときの情報（チーム選択UI用。在室扱いにはならない） */
+export interface JoinPreview {
+  code: string;
+  status: RoomData['status'];
+  battleMode: Settings['battleMode'];
+  teamCount: number;
+  teamAssignMode: Settings['teamAssignMode'];
+  playerCount: number;
+  /** チームごとの現在のメンバー（表示名・得点） */
+  teams: { teamId: number; members: { name: string; score: number }[] }[];
+  /** 過去の記録（得点・所属）が残っている再参加かどうか */
+  isReturning: boolean;
+  /** 保存されていた自分の得点（無ければ null） */
+  myScore: number | null;
+  /** 保存されていた自分の所属（無ければ null） */
+  myTeamId: number | null;
+  /** チームを自分で選ぶ必要があるか（チーム戦で、保存済みの所属が無いとき） */
+  needsTeamChoice: boolean;
+}
 
 export interface RoomState {
   uid: string | null;
@@ -407,8 +427,74 @@ export function useRoom() {
     [attachPresence, measureRtt, serverNow, uid],
   );
 
+  /**
+   * 参加せずにルームを覗く（途中参加時のチーム選択用）。
+   * ここでは players に書き込まないので、在室扱いにもならず部屋も作られない。
+   */
+  const peekRoom = useCallback(
+    async (code0: string): Promise<JoinPreview | null> => {
+      setError(null);
+      setBusy(true);
+      const code = code0.trim().toUpperCase();
+      try {
+        const myUid = uid ?? (await ensureAnonymousAuth()).uid;
+        setUid(myUid);
+        const snap = await get(ref(db, `rooms/${code}`));
+        if (!snap.exists()) {
+          setError('そのルームコードは見つかりませんでした');
+          return null;
+        }
+        if (await dropExpiredRoom(code)) {
+          setError('そのルームは有効期限切れ（24時間アクセスなし）で削除されました');
+          return null;
+        }
+        const data = snap.val() as RoomData;
+        const settings = normalizeSettings(data.settings);
+        const playerList = Object.entries(data.players ?? {})
+          .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+          .map(([pUid, v]) => ({
+            uid: pUid,
+            name: v.name,
+            score: v.score ?? 0,
+            teamId: v.teamId ?? null,
+          }));
+        const teams = Array.from({ length: settings.teamCount }, (_, teamId) => ({
+          teamId,
+          members: playerList
+            .filter((p) => p.teamId === teamId)
+            .sort((a, b) => b.score - a.score)
+            .map((p) => ({ name: p.name, score: p.score })),
+        }));
+        const mine = data.players?.[myUid];
+        const myTeamId = isValidTeamId(mine?.teamId, settings.teamCount)
+          ? Math.floor(Number(mine?.teamId))
+          : null;
+        return {
+          code,
+          status: data.status,
+          battleMode: settings.battleMode,
+          teamCount: settings.teamCount,
+          teamAssignMode: settings.teamAssignMode,
+          playerCount: playerList.length,
+          teams,
+          // 退出しても score / teamId はサーバーに残るので、それがあれば再参加として扱う
+          isReturning: !!mine && (typeof mine.score === 'number' || mine.teamId != null),
+          myScore: typeof mine?.score === 'number' ? mine.score : null,
+          myTeamId,
+          needsTeamChoice: settings.battleMode === 'team' && myTeamId === null,
+        };
+      } catch (e: any) {
+        setError(e?.message ?? 'ルームの確認に失敗しました');
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [dropExpiredRoom, uid],
+  );
+
   const joinRoom = useCallback(
-    async (code0: string, name: string) => {
+    async (code0: string, name: string, requestedTeamId?: number | null) => {
       setError(null);
       setBusy(true);
       const code = code0.trim().toUpperCase();
@@ -426,15 +512,34 @@ export function useRoom() {
           return null;
         }
         const data = snap.val() as RoomData;
+        const settings = normalizeSettings(data.settings);
+        const existing = data.players?.[myUid];
         const taken = Object.entries(data.players ?? {})
           .filter(([id]) => id !== myUid)
           .map(([, v]) => v?.name)
           .filter(Boolean) as string[];
-        await update(ref(db, `rooms/${code}/players/${myUid}`), {
+        const playerUpdates: Record<string, unknown> = {
           name: uniqueName(name, taken),
           isReady: false,
           rttMs: 0,
-        });
+        };
+        // 得点は保存済みのものを絶対に上書きしない（抜けた人が戻ると復活する）。
+        // まだ得点を持っていない新規参加だけ 0 で初期化する。
+        if (typeof existing?.score !== 'number') playerUpdates.score = 0;
+        if (settings.battleMode === 'team') {
+          // 所属の復元 > 本人の選択 > 人数が一番少ないチーム、の順で決める
+          playerUpdates.teamId = pickJoinTeamId({
+            players: Object.entries(data.players ?? {}).map(([pUid, v]) => ({
+              uid: pUid,
+              score: v?.score ?? 0,
+              teamId: v?.teamId ?? null,
+            })),
+            teamCount: settings.teamCount,
+            existingTeamId: existing?.teamId ?? null,
+            requestedTeamId: requestedTeamId ?? null,
+          });
+        }
+        await update(ref(db, `rooms/${code}/players/${myUid}`), playerUpdates);
         // 掃除と競合して消された場合は、中途半端な部屋を作らずに戻る
         const gmSnap = await get(ref(db, `rooms/${code}/gmUid`));
         if (!gmSnap.exists()) {
@@ -566,6 +671,28 @@ export function useRoom() {
     },
     [],
   );
+
+  /**
+   * チーム戦: 自分がチームを選んで入る（途中参加者用）。
+   * 既に所属が決まっている場合は勝手な移籍を防ぐため何もしない
+   * （所属の変更はGMの setPlayerTeam だけが行える）。
+   */
+  const joinTeam = useCallback(async (teamId: number) => {
+    markActivityRef.current();
+    const code = roomIdRef.current;
+    const data = roomRef.current;
+    const myUid = uidRef.current;
+    if (!code || !data || !myUid) return;
+    const settings = normalizeSettings(data.settings);
+    if (settings.battleMode !== 'team') return;
+    if (!isValidTeamId(teamId, settings.teamCount)) return;
+    if (isValidTeamId(data.players?.[myUid]?.teamId, settings.teamCount)) return;
+    try {
+      await set(ref(db, `rooms/${code}/players/${myUid}/teamId`), Math.floor(teamId));
+    } catch (e: any) {
+      setError(e?.message ?? 'チームへの参加に失敗しました');
+    }
+  }, []);
 
   /**
    * チーム戦: 現在の設定でチーム分けを実行して全員へ配信する（GMのみ）。
@@ -895,6 +1022,67 @@ export function useRoom() {
     [],
   );
 
+  /**
+   * GM権限: この問題の「まだ正解していない人」を全員パス扱いにして即確定する。
+   * 既に正解した人の解答はそのまま残るので、確定処理で順位どおり得点が入る。
+   */
+  const forcePassRemaining = useCallback(async () => {
+    const code = roomIdRef.current;
+    const data = roomRef.current;
+    const myUid = uidRef.current;
+    if (!code || !data || data.gmUid !== myUid) return;
+    if (data.status !== 'playing' || !data.currentRound) return;
+    const r = data.currentRound;
+    try {
+      const snap = await get(ref(db, `rooms/${code}/answers/${r.roundIndex}`));
+      const answers = (snap.val() ?? {}) as Record<
+        string,
+        { formula: string; key?: string; adjustedElapsedMs: number; passed?: boolean }
+      >;
+      const activeIds = Object.entries(data.players ?? {})
+        .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+        .map(([pUid]) => pUid);
+      const updates: Record<string, unknown> = {};
+      for (const pUid of activeIds) {
+        const a = answers[pUid];
+        if (a && !a.passed) continue; // 正解済みはそのまま（得点対象）
+        if (a?.passed) continue; // パス済みはそのまま
+        updates[`rooms/${code}/answers/${r.roundIndex}/${pUid}`] = {
+          formula: 'PASS',
+          key: '',
+          submittedAt: serverNow(),
+          adjustedElapsedMs: 0,
+          passed: true,
+        };
+      }
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
+      const hasCorrect = Object.values(answers).some((a) => a && !a.passed);
+      // 1.3秒の「全員パス」タイマーを待たず、その場で確定して得点を入れる
+      await finalizeRound(hasCorrect ? 'answered' : 'passed');
+    } catch (e: any) {
+      setError(e?.message ?? '強制パスに失敗しました');
+    }
+  }, [finalizeRound, serverNow]);
+
+  /**
+   * GM権限: 試合を強制終了してロビー（ゲーム設定）へ戻す。
+   * 進行中のラウンドは破棄し、確定待ちタイマーが後から走らないよう確定済みにしておく。
+   * プレイヤー・得点・所属チームはロビーにそのまま残る（ルーム自体は消さない）。
+   */
+  const forceEndToLobby = useCallback(async () => {
+    const code = roomIdRef.current;
+    const data = roomRef.current;
+    const myUid = uidRef.current;
+    if (!code || !data || data.gmUid !== myUid) return;
+    if (data.status === 'lobby') return;
+    if (data.currentRound) finalizedRef.current.add(data.currentRound.roundIndex);
+    try {
+      await update(ref(db, `rooms/${code}`), { status: 'lobby', preparingAt: null });
+    } catch (e: any) {
+      setError(e?.message ?? 'ロビーへ戻れませんでした');
+    }
+  }, []);
+
   const nextRound = useCallback(async () => {
     const code = roomIdRef.current;
     const data = roomRef.current;
@@ -1011,11 +1199,13 @@ export function useRoom() {
     rttMs,
     serverNow,
     createRoom,
+    peekRoom,
     joinRoom,
     leaveRoom,
     setReady,
     updateSettings,
     setPlayerTeam,
+    joinTeam,
     assignTeamsNow,
     startMatch,
     submitAnswer,
@@ -1023,6 +1213,8 @@ export function useRoom() {
     cancelPass,
     nextRound,
     backToLobby,
+    forcePassRemaining,
+    forceEndToLobby,
     sendChat,
     clearChat,
     genProgress,
