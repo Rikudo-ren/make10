@@ -90,7 +90,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
                 value={s.randomTargetMin}
                 onChange={(e) => onChange({ randomTargetMin: Number(e.target.value) })}
               />
-              <span className="text-slate-400">〜</span>
+              <span className="text-bone-faint">〜</span>
               <input
                 type="number"
                 className={inputCls}
@@ -115,7 +115,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
       </div>
 
       <div>
-        <div className="mb-2 text-xs font-semibold text-slate-300">使用可能な演算子</div>
+        <div className="eyebrow mb-2">Operators</div>
         <div className="flex flex-wrap gap-2">
           {(['+', '-', '*', '/'] as Op[]).map((op) => (
             <Chip
@@ -218,7 +218,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
         </Field>
       </div>
       {dis && (
-        <p className="text-xs text-slate-400">
+        <p className="text-[11px] leading-relaxed text-bone-faint">
           設定を変更できるのはゲームマスター（ルーム作成者）だけです。
         </p>
       )}

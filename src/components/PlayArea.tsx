@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBoard } from '../lib/board';
 import { EPS, OP_SYMBOL, displayValue, type Op } from '../lib/solver';
-import { Button } from './ui';
+import { Button, Icon } from './ui';
 import { cn } from '../utils/cn';
 
 interface Props {
@@ -78,7 +78,7 @@ export function PlayArea({
   const locked = !!disabled || lockRemain > 0 || !!isCountdown;
   const wrongFinished =
     board.finished && board.finalValue !== null && Math.abs(board.finalValue - target) >= EPS;
-  const penaltyText = penaltyMode === 'lock' ? '誤答時は5秒間入力ロック' : 'ペナルティなし';
+  const penaltyText = penaltyMode === 'lock' ? '誤答時は5秒間ロック' : 'ペナルティなし';
   const canRequestPass = !!onPass && !passed && !disabled && !isCountdown;
   /** パス中に操作したら「やっぱり解く」とみなしてパスを取り消す */
   const resumeIfPassed = () => {
@@ -93,47 +93,53 @@ export function PlayArea({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* 式表示エリア */}
-      <div className="relative overflow-hidden rounded-3xl border border-indigo-400/25 bg-gradient-to-b from-indigo-950/60 to-slate-950/60 px-5 py-4">
-        <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-indigo-500/20 blur-2xl" />
-        <div className="flex items-start justify-between gap-3">
+      {/* 式表示 */}
+      <div className="relative border border-[var(--hair)] bg-black/45 px-4 py-4 sm:px-5">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-black tracking-[.3em] text-indigo-300/80">式</div>
+            <div className="eyebrow">Expression</div>
             <div
               key={board.flash + '-' + wrongShake}
               className={cn(
-                'mt-1 min-h-[36px] truncate text-2xl font-black tabular-nums text-white sm:text-3xl',
+                'mt-2 min-h-[42px] break-words text-[22px] leading-tight sm:text-[28px]',
+                'display text-bone',
                 (board.flash > 0 || wrongShake > 0) && 'animate-shake',
               )}
             >
               {isCountdown ? (
-                <span className="text-base font-bold text-slate-500">カウントダウン中…</span>
+                <span className="text-[13px] tracking-[0.3em] text-bone-faint">STANDBY</span>
               ) : board.finished ? (
                 board.finalFormula
               ) : board.pendingText ? (
                 board.pendingText
               ) : (
-                <span className="text-base font-bold text-slate-500">数字を選んでね</span>
+                <span className="text-[13px] tracking-[0.14em] text-bone-faint">
+                  数字を選択して開始
+                </span>
               )}
             </div>
           </div>
-          <div className="flex flex-col items-center rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-1.5">
-            <span className="text-[9px] font-black tracking-widest text-amber-200/70">TARGET</span>
-            <span className="text-3xl font-black leading-none text-amber-300">{target}</span>
+
+          <div className="shrink-0 border border-brass/45 bg-brass/[0.06] px-4 py-2 text-center">
+            <div className="eyebrow text-brass/80">Target</div>
+            <div className="display mt-0.5 text-[34px] leading-none text-brass">{target}</div>
           </div>
         </div>
+
         {wrongFinished && !isCountdown && (
-          <div className="mt-2 text-xs font-bold text-rose-300">
-            結果 {displayValue(board.finalValue!)} … {target} になりませんでした
+          <div className="mt-3 border-l-2 border-blood pl-2.5 text-[12px] leading-relaxed text-[#ff9aa8]">
+            結果 {displayValue(board.finalValue!)} — {target} になりませんでした
             {lockRemain > 0 && (
-              <span className="text-rose-300/70"> / あと {(lockRemain / 1000).toFixed(0)}秒で解除</span>
+              <span className="numeral ml-1.5 text-[11px] text-blood">
+                LOCK {(lockRemain / 1000).toFixed(0)}s
+              </span>
             )}
           </div>
         )}
       </div>
 
       {/* 数字タイル（固定グリッド・空スロットも固定） */}
-      <div className="grid grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
         {board.slots.map((slot) => (
           <div key={slot.id} className="relative aspect-square">
             {slot.tile ? (
@@ -144,15 +150,15 @@ export function PlayArea({
                   board.tapNumber(slot.id);
                 }}
                 className={cn(
-                  'tile animate-pop transition-all',
+                  'tile',
                   slot.id === board.selectedSlot && 'tile-selected',
-                  isCountdown && 'text-white/20',
+                  isCountdown && 'text-bone/15',
                 )}
               >
-                {isCountdown ? '?' : displayValue(slot.tile.expr.rat)}
+                {isCountdown ? '—' : displayValue(slot.tile.expr.rat)}
               </button>
             ) : (
-              <div className="absolute inset-0 rounded-[20px] border-2 border-dashed border-white/8 bg-white/[0.015]" />
+              <div className="tile-empty absolute inset-0" />
             )}
           </div>
         ))}
@@ -171,7 +177,7 @@ export function PlayArea({
                 resumeIfPassed();
                 board.tapOp(op);
               }}
-              className={cn('op-btn py-4 sm:py-5', active && 'op-btn-active')}
+              className={cn('op-btn py-3.5 sm:py-4', active && 'op-btn-active')}
             >
               {OP_SYMBOL[op]}
             </button>
@@ -179,82 +185,86 @@ export function PlayArea({
         })}
       </div>
 
-      {/* 操作ボタン: 1手戻す / やり直す は左、全リセットは右端（パスはこの下の行の左側） */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 操作列 */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button
           variant="soft"
           onClick={board.undo}
           disabled={!board.canUndo || locked}
-          className="px-3 py-2.5 text-xs"
+          className="px-3 py-2 text-[10px]"
         >
-          ↩ 1手戻す
+          <Icon name="undo" className="h-3.5 w-3.5" />
+          <span>1手戻す</span>
         </Button>
         <Button
           variant="soft"
           onClick={board.redo}
           disabled={!board.canRedo || locked}
-          className="px-3 py-2.5 text-xs"
+          className="px-3 py-2 text-[10px]"
         >
-          やり直す →
+          <Icon name="redo" className="h-3.5 w-3.5" />
+          <span>やり直す</span>
         </Button>
         <div className="grow" />
         <Button
-          variant="soft"
+          variant="ghost"
           onClick={board.reset}
           disabled={locked}
-          className="px-3 py-2.5 text-xs"
+          className="px-3 py-2 text-[10px] text-bone-dim"
           title="式を出題時の状態まで一気に戻します"
         >
-          ⟲ 全リセット
+          <Icon name="reset" className="h-3.5 w-3.5" />
+          <span>全リセット</span>
         </Button>
       </div>
 
-      {/* パス: 画面の左側に置き、全リセット（右下）からできるだけ離す。確認ダイアログは出さない */}
+      {/* パス: 左側に分離し、全リセット（右端）から離す */}
       {onPass && (
-        <div className="mt-1 border-t border-white/10 pt-3">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="border-t border-[var(--hair)] pt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {passed ? (
               <Button
                 variant="soft"
-                className="px-3 py-2 text-xs"
+                className="px-3 py-2 text-[10px]"
                 disabled={!onCancelPass}
                 onClick={onCancelPass}
                 title="ラウンドが終了していなければ解答に戻れます"
               >
-                ↩ パスを取り消す
+                <Icon name="undo" className="h-3.5 w-3.5" />
+                <span>パスを取り消す</span>
               </Button>
             ) : (
               <Button
                 variant="ghost"
-                className="border border-white/10 px-3 py-2 text-xs text-slate-300"
+                className="border border-[var(--hair)] px-3 py-2 text-[10px] text-bone-dim"
                 disabled={!canRequestPass}
                 onClick={onPass}
                 title="未正解の人が全員パスするとラウンド終了になります"
               >
-                ⏭ パスする
+                <Icon name="skip" className="h-3.5 w-3.5" />
+                <span>パスする</span>
               </Button>
             )}
-            <span className="text-[11px] leading-relaxed text-slate-500">
+            <span className="text-[11px] leading-relaxed text-bone-faint">
               {passed
-                ? 'パス中でも解答OK（数字を触ると取り消し）'
-                : '解けないときはパス（押しただけでは解答権は失われません）'}
+                ? 'パス中でも解答可（数字を触ると取り消し）'
+                : '解けないときのみ。押しただけでは解答権は失われません'}
             </span>
           </div>
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
-        <span>
-          <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
-            Backspace
-          </kbd>
-          <span className="ml-1.5">でも1手戻せます</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="numeral text-[10px] tracking-[0.12em] text-bone-faint">
+          [BACKSPACE] 1手戻す
         </span>
-        <span className="font-bold">⚠ {penaltyText}</span>
+        <span className="numeral text-[10px] tracking-[0.12em] text-bone-faint">
+          PENALTY — {penaltyText}
+        </span>
       </div>
 
       {disabled && disabledReason && (
-        <div className="animate-float-up rounded-2xl border border-amber-300/40 bg-amber-400/10 px-4 py-3 text-center text-sm font-bold text-amber-100">
+        <div className="animate-rise border-l-2 border-brass bg-brass/[0.07] px-3.5 py-2.5 text-[12px] leading-relaxed text-[#efd894]">
           {disabledReason}
         </div>
       )}

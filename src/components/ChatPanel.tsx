@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { UseRoom } from '../lib/useRoom';
 import { CHAT_KEEP, CHAT_MAX_LEN } from '../lib/useRoom';
-import { Card, SectionTitle, inputCls } from './ui';
+import { Card, Icon, SectionTitle, inputCls } from './ui';
 import { cn } from '../utils/cn';
 
-const QUICK = ['👍', '😂', '😭', 'ナイス'];
+/** 定型文（絵文字は使わない） */
+const QUICK = ['よろしく', 'ナイス', 'まいった', 'あと少し'];
 
 function formatTime(at: number) {
   if (!at || !Number.isFinite(at)) return '';
@@ -52,21 +53,28 @@ export function ChatPanel({ ctrl, className }: { ctrl: UseRoom; className?: stri
       setText('');
       setNotice(null);
     } else {
-      setNotice('送信できませんでした（連投は少し待ってね）');
+      setNotice('送信できませんでした（連投は少し待ってください）');
       window.setTimeout(() => setNotice(null), 2000);
     }
   };
 
   return (
     <Card className={cn('flex flex-col', className)}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <SectionTitle icon="💬">チャット</SectionTitle>
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-slate-500">{messages.length}件</span>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <SectionTitle kicker="Transmission">
+          <span className="flex items-center gap-1.5">
+            <Icon name="chat" className="h-3 w-3 text-bone-faint" />
+            チャット
+          </span>
+        </SectionTitle>
+        <div className="flex items-center gap-2">
+          <span className="numeral text-[10px] tracking-[0.12em] text-bone-faint">
+            {String(messages.length).padStart(2, '0')}
+          </span>
           {isGM && messages.length > 0 && (
             <button
               onClick={() => ctrl.clearChat()}
-              className="rounded-lg px-2 py-1 text-[10px] font-bold text-slate-500 transition hover:bg-white/8 hover:text-rose-300"
+              className="numeral text-[9px] tracking-[0.1em] text-bone-faint transition hover:text-[#ff8a9b]"
               title="チャットの履歴を削除します（GMのみ）"
             >
               履歴を消す
@@ -77,32 +85,44 @@ export function ChatPanel({ ctrl, className }: { ctrl: UseRoom; className?: stri
 
       <div
         ref={listRef}
-        className="h-44 space-y-2 overflow-y-auto rounded-2xl border border-white/8 bg-black/25 p-2.5 sm:h-52"
+        className="scan-surface h-44 space-y-2.5 overflow-y-auto border border-[var(--hair)] bg-black/30 p-2.5 sm:h-52"
       >
         {messages.length === 0 ? (
-          <p className="grid h-full place-items-center px-4 text-center text-[11px] leading-relaxed text-slate-500">
-            まだチャットはありません。
-            <br />
-            あいさつや作戦を送ってみよう
-          </p>
+          <div className="grid h-full place-items-center px-4 text-center">
+            <div>
+              <Icon name="chat" className="mx-auto h-4 w-4 text-bone-faint/60" />
+              <p className="mt-2 text-[11px] leading-relaxed text-bone-faint">
+                まだ発言はありません
+                <br />
+                あいさつや作戦をどうぞ
+              </p>
+            </div>
+          </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {messages.map((m) => {
               const mine = m.uid === uid;
               return (
                 <li key={m.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
-                  <div className="flex items-baseline gap-1.5 px-1 text-[10px] text-slate-500">
-                    <span className={cn('font-bold', mine ? 'text-indigo-300' : 'text-slate-400')}>
-                      {mine ? 'あなた' : m.name || 'プレイヤー'}
+                  <div className="flex items-baseline gap-1.5 px-0.5">
+                    <span
+                      className={cn(
+                        'numeral text-[9px] tracking-[0.12em]',
+                        mine ? 'text-[#ff8a9b]' : 'text-brass/80',
+                      )}
+                    >
+                      {mine ? 'YOU' : m.name || 'PLAYER'}
                     </span>
-                    <span className="tabular-nums">{formatTime(m.at)}</span>
+                    <span className="numeral text-[9px] tabular-nums text-bone-faint/70">
+                      {formatTime(m.at)}
+                    </span>
                   </div>
                   <div
                     className={cn(
-                      'mt-0.5 max-w-[88%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm leading-snug',
+                      'mt-0.5 max-w-[88%] whitespace-pre-wrap break-words border px-2.5 py-1.5 text-[12.5px] leading-snug',
                       mine
-                        ? 'bg-indigo-500/30 text-indigo-50'
-                        : 'bg-white/8 text-slate-100',
+                        ? 'border-blood/45 bg-blood/15 text-bone'
+                        : 'border-[var(--hair)] bg-white/[0.035] text-bone/90',
                     )}
                   >
                     {m.text}
@@ -121,7 +141,7 @@ export function ChatPanel({ ctrl, className }: { ctrl: UseRoom; className?: stri
             type="button"
             onClick={() => send(q)}
             disabled={sending}
-            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-white/12 disabled:opacity-40"
+            className="border border-[var(--hair)] bg-white/[0.02] px-2 py-1 text-[10px] text-bone-dim transition hover:border-brass/50 hover:text-brass disabled:opacity-40"
           >
             {q}
           </button>
@@ -136,8 +156,8 @@ export function ChatPanel({ ctrl, className }: { ctrl: UseRoom; className?: stri
         }}
       >
         <input
-          className={cn(inputCls, 'min-w-0 flex-1 py-2 text-sm')}
-          placeholder="メッセージを送る"
+          className={cn(inputCls, 'min-w-0 flex-1 py-2 text-[13px]')}
+          placeholder="メッセージ"
           maxLength={CHAT_MAX_LEN}
           autoComplete="off"
           enterKeyHint="send"
@@ -148,14 +168,15 @@ export function ChatPanel({ ctrl, className }: { ctrl: UseRoom; className?: stri
         <button
           type="submit"
           disabled={sending || !text.trim()}
-          className="shrink-0 rounded-xl bg-indigo-500 px-3 py-2 text-sm font-black text-white transition hover:bg-indigo-400 disabled:opacity-40"
+          className="grid h-9 w-9 shrink-0 place-items-center border border-blood/60 bg-blood/80 text-bone transition hover:bg-blood disabled:opacity-35"
+          aria-label="送信"
         >
-          送信
+          <Icon name="send" className="h-3.5 w-3.5" />
         </button>
       </form>
 
-      <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-        {notice ?? `直近${CHAT_KEEP}件のみ保存（ルームは24時間で自動削除）`}
+      <p className="mt-1.5 text-[9.5px] leading-relaxed text-bone-faint">
+        {notice ?? `直近${CHAT_KEEP}件のみ・ルームは24時間で自動削除`}
       </p>
     </Card>
   );

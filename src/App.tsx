@@ -6,7 +6,7 @@ import { GameScreen } from './components/GameScreen';
 import { FinalResult } from './components/FinalResult';
 import { SoloScreen } from './components/SoloScreen';
 import { RoomHealthNotice } from './components/RoomHealthNotice';
-import { Spinner } from './components/ui';
+import { Icon, Spinner } from './components/ui';
 
 export default function App() {
   const ctrl = useRoom();
@@ -49,30 +49,35 @@ export default function App() {
   }
 
   return (
-    <div className="bg-scene min-h-screen text-slate-100">
+    <div className="bg-scene min-h-screen text-bone">
       {content}
 
       {!solo && <RoomHealthNotice ctrl={ctrl} />}
 
       {showPreparing && (
-        <div className="animate-fade-in fixed inset-0 z-[80] grid place-items-center bg-black/80 p-6 backdrop-blur-md">
+        <div className="animate-fade-in fixed inset-0 z-[80] grid place-items-center bg-ink/88 p-6 backdrop-blur-md">
           <div className="card w-full max-w-sm p-6 text-center">
-            <Spinner className="mx-auto h-9 w-9 border-[3px]" />
-            <div className="mt-4 text-lg font-black text-white">問題を準備中…</div>
-            <p className="mt-1 text-xs leading-relaxed text-slate-400">
-              GMが「必ず解ける問題」を探しています。
+            <div className="flex items-center justify-center gap-2.5">
+              <span className="h-1.5 w-1.5 animate-breathe bg-cyber" />
+              <span className="eyebrow">Generating</span>
+            </div>
+            <Spinner className="mx-auto mt-5 h-8 w-8" />
+            <div className="display mt-4 text-[20px] text-bone">問題を準備中</div>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-bone-dim">
+              GM が「必ず解ける問題」を探しています。
               <br />
-              重い設定だと数秒かかることがあります。
+              重い設定では数秒かかることがあります。
             </p>
-            <div className="mt-4 flex items-center justify-center gap-3 text-[11px] tabular-nums text-slate-500">
-              <span>{(preparingElapsed / 1000).toFixed(1)}秒</span>
+            <div className="numeral mt-4 flex items-center justify-center gap-3 text-[11px] tracking-[0.1em] text-bone-faint">
+              <span>{(preparingElapsed / 1000).toFixed(1)} s</span>
               {ctrl.isGM && ctrl.genProgress && (
-                <span>{ctrl.genProgress.attempts}通り試行</span>
+                <span>{ctrl.genProgress.attempts} attempts</span>
               )}
             </div>
             {ctrl.isGM && (
-              <p className="mt-2 text-[10px] text-slate-500">
-                最大3秒で打ち切り、ダメなら設定の見直しをお願いします（画面は固まりません）
+              <p className="mt-2.5 flex items-start justify-center gap-1.5 text-[10px] leading-relaxed text-bone-faint">
+                <Icon name="clock" className="mt-0.5 h-3 w-3 shrink-0" />
+                <span>最大3秒で打ち切り。それでも出ない場合は設定をゆるめてください（画面は固まりません）</span>
               </p>
             )}
           </div>
