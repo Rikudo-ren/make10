@@ -209,8 +209,8 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
     <div className="relative mx-auto w-full max-w-6xl px-4 py-4 pb-20" data-tick={tick}>
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
-        <div className="drift-slow absolute -right-10 top-10 h-64 w-64 rounded-full bg-fuchsia-600/10 blur-3xl" />
-        <div className="drift absolute -left-10 bottom-0 h-64 w-64 rounded-full bg-cyan-600/10 blur-3xl" />
+        <div className="absolute -right-10 top-10 h-64 w-64 rounded-full ambient-magenta" />
+        <div className="absolute -left-10 bottom-0 h-64 w-64 rounded-full ambient-cyan" />
       </div>
 
       {/* ヘッダー */}
@@ -272,7 +272,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
       <div className="grid gap-3.5 lg:grid-cols-[1fr_268px]">
         <Card className="relative overflow-hidden p-4 sm:p-5">
           {/* 定員ステータスバー */}
-          {!judging && (
+          {!judging && !settings.hideLiveAnswers && (
             <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px]">
               <span className="jp flex items-center gap-2 font-bold text-slate-300">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]" />
@@ -303,7 +303,9 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               judging
                 ? 'ラウンド終了。結果を表示しています。'
                 : iAmSolved
-                  ? `正解済み（${myLiveRank}位で抜け／式: ${myAnswer?.formula}）他のプレイヤーの解答を待っています…`
+                  ? settings.hideLiveAnswers
+                    ? '正解済み。結果発表をお待ちください…'
+                    : `正解済み（${myLiveRank}位で抜け／式: ${myAnswer?.formula}）他のプレイヤーの解答を待っています…`
                   : undefined
             }
             passed={!!myAnswer?.passed}
@@ -334,7 +336,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </div>
             <ul className="space-y-1.5">
               {[...players]
-                .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+                .sort((a, b) => settings.hideLiveAnswers && !judging ? 0 : (b.score ?? 0) - (a.score ?? 0))
                 .map((p) => {
                   const a = answers[p.uid];
                   const solveRankIndex = liveCorrectAnswers.findIndex(([id]) => id === p.uid);
@@ -348,7 +350,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                       className={cn(
                         'flex items-center justify-between gap-2 border-l-2 bg-black/30 px-2.5 py-1.5 text-[12px] transition',
                         p.uid === uid ? 'border-cyan-300/90 bg-cyan-400/8' : 'border-white/12',
-                        hasSolved && 'border-emerald-400/90 bg-emerald-500/8',
+                        hasSolved && (!settings.hideLiveAnswers || p.uid === uid || judging) && 'border-emerald-400/90 bg-emerald-500/8',
                       )}
                     >
                       <span className="flex min-w-0 items-center gap-1.5 truncate font-bold text-white">
@@ -359,10 +361,12 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                         )}
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
-                        {hasSolved ? (
+                        {settings.hideLiveAnswers && !judging && p.uid !== uid ? (
+                          <span className="text-[9px] font-bold tracking-wider text-slate-500">非公開</span>
+                        ) : hasSolved ? (
                           <span className="flex items-center gap-1 text-[9px] font-bold tracking-wider text-emerald-300">
                             <IconCheck size={10} />
-                            {solveRank}位
+                            {settings.hideLiveAnswers && !judging ? '正解' : `${solveRank}位`}
                           </span>
                         ) : isPassed ? (
                           <span className="text-[9px] font-bold tracking-wider text-slate-500">PASS</span>
@@ -371,9 +375,11 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                             THINKING
                           </span>
                         )}
-                        <span className="num min-w-6 bg-white/10 px-1.5 py-0.5 text-center text-[11px] font-black text-amber-200">
-                          {p.score ?? 0}
-                        </span>
+                        {(!settings.hideLiveAnswers || judging) && (
+                          <span className="num min-w-6 bg-white/10 px-1.5 py-0.5 text-center text-[11px] font-black text-amber-200">
+                            {p.score ?? 0}
+                          </span>
+                        )}
                       </span>
                     </li>
                   );
@@ -387,10 +393,10 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                   <div className="animate-float-up border border-emerald-400/40 bg-emerald-500/12 p-2.5 text-center">
                     <div className="jp flex items-center justify-center gap-2 text-[13px] font-black text-emerald-300">
                       <IconCheck size={14} />
-                      {myLiveRank === 1 ? '1位で正解！' : `${myLiveRank}位で正解！`}
+                      {settings.hideLiveAnswers ? '正解！順位は結果発表で公開' : myLiveRank === 1 ? '1位で正解！' : `${myLiveRank}位で正解！`}
                     </div>
                     <div className="jp mt-1 text-[10px] leading-relaxed text-emerald-200/70">
-                      他のプレイヤーが解き終わるか、全員パスするまでお待ちください
+                      結果発表までお待ちください
                     </div>
                   </div>
                 ) : myAnswer?.passed ? (
@@ -402,10 +408,10 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                   </div>
                 ) : (
                   <div className="border border-cyan-400/30 bg-cyan-500/8 p-2.5 text-center">
-                    <div className="jp text-[11px] font-bold text-cyan-100">
+                    {!settings.hideLiveAnswers && <div className="jp text-[11px] font-bold text-cyan-100">
                       残り{' '}
                       <b className="num text-amber-300">{Math.max(0, targetCap - liveCorrectCount)}</b> 枠
-                    </div>
+                    </div>}
                     <div className="jp mt-0.5 text-[10px] text-slate-400">
                       どうしても解けない時は「パス」できます
                     </div>

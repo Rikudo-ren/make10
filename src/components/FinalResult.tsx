@@ -23,8 +23,8 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
     <div className="relative mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 py-8 pb-24">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
-        <div className="drift absolute -right-10 top-16 h-64 w-64 rounded-full bg-amber-500/10 blur-3xl" />
-        <div className="drift-slow absolute -left-10 bottom-10 h-64 w-64 rounded-full bg-cyan-600/10 blur-3xl" />
+        <div className="absolute -right-10 top-16 h-64 w-64 rounded-full ambient-amber" />
+        <div className="absolute -left-10 bottom-10 h-64 w-64 rounded-full ambient-cyan" />
       </div>
 
       <div className="mt-auto" />
