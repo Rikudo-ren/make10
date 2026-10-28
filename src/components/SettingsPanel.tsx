@@ -156,6 +156,12 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
           onChange={(v) => onChange({ showDifficulty: v })}
         />
         <Toggle
+          label="結果発表まで正解状況・順位を隠す"
+          disabled={dis}
+          checked={s.hideLiveAnswers}
+          onChange={(v) => onChange({ hideLiveAnswers: v })}
+        />
+        <Toggle
           label="開始に全員Readyを必須にする"
           disabled={dis}
           checked={s.requireAllReady}
@@ -187,22 +193,20 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
             <option value="rank">順位傾斜配点（1位ほど高得点）</option>
             <option value="first">早押し（1位のみ1点）</option>
             <option value="flat">正解者一律（入賞枠全員1点）</option>
+            <option value="custom">順位ごとに配点を設定</option>
           </select>
         </Field>
         {s.scoringMode !== 'first' && (
           <Field label="何位まで点数をつけるか">
-            <select
+            <input
+              type="number"
               className={inputCls}
               disabled={dis}
-              value={s.maxRankCount ?? 3}
-              onChange={(e) => onChange({ maxRankCount: Number(e.target.value) })}
-            >
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>
-                  {n}位まで（{s.scoringMode === 'rank' ? Array.from({ length: n }, (_, i) => `${n - i}点`).join(', ') : '各1点'}）
-                </option>
-              ))}
-            </select>
+              min={1}
+              max={50}
+              value={s.maxRankCount}
+              onChange={(e) => onChange({ maxRankCount: Math.min(50, Math.max(1, Math.floor(Number(e.target.value) || 1))) })}
+            />
           </Field>
         )}
         <Field label="お手つきペナルティ">
@@ -217,6 +221,31 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
           </select>
         </Field>
       </div>
+      {s.scoringMode === 'custom' && (
+        <div>
+          <div className="label jp mb-2 tracking-[.18em] text-cyan-200/70">順位ごとの配点</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {Array.from({ length: s.maxRankCount }, (_, i) => (
+              <Field key={i} label={`${i + 1}位（点）`}>
+                <input
+                  type="number" className={inputCls} disabled={dis} min={0} max={9999}
+                  value={s.customRankPoints[i] ?? 0}
+                  onChange={(e) => {
+                    const points = Array.from({ length: s.maxRankCount }, (_, rank) => s.customRankPoints[rank] ?? 0);
+                    points[i] = Math.min(9999, Math.max(0, Math.floor(Number(e.target.value) || 0)));
+                    onChange({ customRankPoints: points });
+                  }}
+                />
+              </Field>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="jp text-[11px] leading-relaxed text-slate-400">
+        {s.hideLiveAnswers
+          ? '結果発表まで他の人の正解・パス状況と順位を非表示にします。得点枠が埋まるか、未正解者が全員パスするか、時間切れになると終了します。'
+          : '得点枠が埋まるか、未正解者が全員パスすると終了します。'}
+      </p>
       {dis && (
         <p className="jp text-[11px] leading-relaxed text-slate-500">
           設定を変更できるのはゲームマスター（ルーム作成者）だけです。

@@ -28,8 +28,8 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
     <div className="relative mx-auto w-full max-w-6xl px-4 py-6 pb-24">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
-        <div className="drift absolute -left-10 top-24 h-64 w-64 rounded-full bg-cyan-600/10 blur-3xl" />
-        <div className="drift-slow absolute right-0 top-10 h-64 w-64 rounded-full bg-fuchsia-600/10 blur-3xl" />
+        <div className="absolute -left-10 top-24 h-64 w-64 rounded-full ambient-cyan" />
+        <div className="absolute right-0 top-10 h-64 w-64 rounded-full ambient-magenta" />
       </div>
 
       {/* ヘッダー */}

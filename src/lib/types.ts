@@ -13,8 +13,10 @@ export interface Settings {
   unlimitedTime: boolean;
   timeLimitSec: number; // unlimitedTime=false のときのみ有効 (1〜300)
   roundCount: number;
-  scoringMode: 'rank' | 'first' | 'flat';
-  maxRankCount: number; // 何位まで入賞枠を設けるか（1〜5、デフォルト3）
+  scoringMode: 'rank' | 'first' | 'flat' | 'custom';
+  maxRankCount: number; // 何位まで得点するか（1〜50）
+  customRankPoints: number[]; // 1位から順に配点
+  hideLiveAnswers: boolean; // 結果発表まで他人の解答状況と順位を隠す
   penaltyMode: 'none' | 'lock';
   penaltyLockSec: number;
   showDifficulty: boolean;
@@ -37,6 +39,8 @@ export const DEFAULT_SETTINGS: Settings = {
   roundCount: 10,
   scoringMode: 'rank',
   maxRankCount: 3,
+  customRankPoints: [3, 2, 1],
+  hideLiveAnswers: false,
   penaltyMode: 'none',
   penaltyLockSec: 5,
   showDifficulty: false,
@@ -102,6 +106,8 @@ export interface RoomData {
 
 export function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   const s = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+  s.maxRankCount = Number.isFinite(s.maxRankCount) ? Math.min(50, Math.max(1, Math.floor(s.maxRankCount))) : 3;
+  if (!Array.isArray(s.customRankPoints)) s.customRankPoints = [...DEFAULT_SETTINGS.customRankPoints];
   if (!Array.isArray(s.allowedOperators) || s.allowedOperators.length === 0) {
     s.allowedOperators = [...DEFAULT_SETTINGS.allowedOperators];
   }

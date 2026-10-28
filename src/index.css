@@ -142,7 +142,6 @@ body {
     transparent 1px,
     transparent 3px
   );
-  mix-blend-mode: overlay;
   z-index: 0;
 }
 
@@ -153,6 +152,11 @@ body {
   background-size: 40px 40px;
   mask-image: radial-gradient(circle at 50% 32%, black, transparent 76%);
 }
+/* 固定の放射グラデーションで、移動する大きな blur の再描画を避ける。 */
+.ambient-cyan { background: radial-gradient(circle, rgba(6, 182, 212, 0.12), transparent 70%); }
+.ambient-magenta { background: radial-gradient(circle, rgba(217, 70, 239, 0.12), transparent 70%); }
+.ambient-amber { background: radial-gradient(circle, rgba(245, 158, 11, 0.12), transparent 70%); }
+
 .noise {
   background-image: radial-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px);
   background-size: 3px 3px;
@@ -182,8 +186,8 @@ body {
   to { opacity: 1; }
 }
 @keyframes count-pop {
-  0% { transform: scale(2.4); opacity: 0; filter: blur(10px); }
-  25% { opacity: 1; filter: blur(0); }
+  0% { transform: scale(2.4); opacity: 0; }
+  25% { opacity: 1; }
   80% { transform: scale(1); opacity: 1; }
   100% { transform: scale(0.86); opacity: 0; }
 }
@@ -285,7 +289,6 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: shimmer 6s linear infinite;
 }
 .grad-solar {
   background: linear-gradient(100deg, #ffe9a8, #ffb020, #ff6ad5, #ffb020, #ffe9a8);
@@ -293,7 +296,6 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: shimmer 6s linear infinite;
 }
 .glow-cyan { text-shadow: 0 0 18px rgba(34, 224, 255, 0.55), 0 0 44px rgba(34, 224, 255, 0.25); }
 .glow-magenta { text-shadow: 0 0 18px rgba(255, 62, 200, 0.5), 0 0 44px rgba(255, 62, 200, 0.22); }
@@ -312,14 +314,12 @@ body {
   color: #22e0ff;
   mix-blend-mode: screen;
   opacity: 0.55;
-  animation: glitch-x 3.6s infinite steps(2, end);
   clip-path: polygon(0 12%, 100% 12%, 100% 44%, 0 44%);
 }
 .glitch::after {
   color: #ff3ec8;
   mix-blend-mode: screen;
   opacity: 0.5;
-  animation: glitch-x 3.6s infinite steps(2, end) reverse;
   clip-path: polygon(0 56%, 100% 56%, 100% 92%, 0 92%);
 }
 
@@ -332,10 +332,7 @@ body {
   border: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(16, 26, 40, 0.82), rgba(6, 11, 19, 0.88));
-  backdrop-filter: blur(12px);
   box-shadow: inset 0 1px 0 rgba(140, 220, 255, 0.09);
-  /* clip-path は box-shadow を切り落とすので、外側の影は drop-shadow で作る */
-  filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.55));
   clip-path: polygon(
     18px 0,
     100% 0,
@@ -367,8 +364,6 @@ body {
 .card-accent {
   border-color: rgba(34, 224, 255, 0.4);
   box-shadow: inset 0 1px 0 rgba(180, 245, 255, 0.14);
-  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 26px rgba(34, 224, 255, 0.22))
-    drop-shadow(0 0 34px rgba(255, 62, 200, 0.12));
 }
 .card-accent::before {
   content: "";
@@ -377,7 +372,6 @@ body {
   padding: 1px;
   background: linear-gradient(120deg, #22e0ff, transparent 35%, transparent 65%, #ff3ec8);
   background-size: 200% 100%;
-  animation: border-run 8s linear infinite;
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
@@ -432,7 +426,6 @@ body {
     rgba(140, 245, 255, 0.16),
     transparent
   );
-  animation: scan-sweep 7s linear infinite;
   pointer-events: none;
 }
 
@@ -576,6 +569,11 @@ select.input {
     background 0.2s ease, color 0.2s ease;
   cursor: pointer;
 }
+.title-example-tile,
+.tile.title-example-tile:hover:not(:disabled) {
+  filter: none;
+  transform: none;
+}
 .tile::before {
   content: "";
   position: absolute;
@@ -599,7 +597,6 @@ select.input {
     radial-gradient(120% 100% at 26% -10%, rgba(255, 62, 200, 0.45), transparent 60%),
     linear-gradient(165deg, #3a0d3f 0%, #170a29 60%, #0a0716 100%);
   text-shadow: 0 0 20px rgba(255, 150, 240, 0.85);
-  animation: sel-pulse 1.8s ease-in-out infinite;
 }
 
 /* =========================================================

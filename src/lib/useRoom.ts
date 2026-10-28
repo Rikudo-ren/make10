@@ -13,6 +13,7 @@ import {
   update,
 } from 'firebase/database';
 import { app, auth, db, ensureAnonymousAuth } from '../firebase';
+import { getRankPoints } from './scoring';
 import { generatePuzzleAsync, puzzleKey, type GenerateProgress } from './puzzle';
 import {
   hasAnyPlayer,
@@ -60,13 +61,6 @@ function uniqueName(base: string, taken: string[]) {
   return `${trimmed}${Math.floor(Math.random() * 1000)}`.slice(0, 20);
 }
 
-export function getRankPoints(rank: number, maxRankCount: number, mode: 'rank' | 'first' | 'flat'): number {
-  if (rank > maxRankCount) return 0;
-  if (mode === 'first') return rank === 1 ? 1 : 0;
-  if (mode === 'flat') return 1;
-  // rank mode: 1位 = maxRankCount点, 2位 = maxRankCount - 1点, ...
-  return Math.max(1, maxRankCount - rank + 1);
-}
 
 export interface RoomState {
   uid: string | null;
@@ -778,7 +772,7 @@ export function useRoom() {
       for (let i = 0; i < correct.length; i++) {
         const [pUid, a] = correct[i];
         const rank = i + 1;
-        const gained = getRankPoints(rank, maxRank, settings.scoringMode);
+        const gained = getRankPoints(rank, maxRank, settings.scoringMode, settings.customRankPoints);
         results[pUid] = {
           adjustedElapsedMs: a.adjustedElapsedMs,
           formula: a.formula,
@@ -908,7 +902,7 @@ export function useRoom() {
 
     // 3) 時間切れ監視（制限時間ありの場合のみ）
     if (!settings.unlimitedTime && !timersRef.current['timeup']) {
-      const remain = r.startedAt + settings.timeLimitSec * 1000 - serverNow();
+      const remain = r.startedAt + 3000 + settings.timeLimitSec * 1000 - serverNow();
       timersRef.current['timeup'] = setTimeout(() => {
         timersRef.current['timeup'] = null;
         finalizeRound(correctIds.length > 0 ? 'answered' : 'timeup');

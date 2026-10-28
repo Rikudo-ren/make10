@@ -70,7 +70,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     <div className="relative mx-auto w-full max-w-3xl px-4 py-6 pb-24">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
-        <div className="drift absolute -left-10 top-10 h-56 w-56 rounded-full bg-cyan-600/10 blur-3xl" />
+        <div className="absolute -left-10 top-10 h-56 w-56 rounded-full ambient-cyan" />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

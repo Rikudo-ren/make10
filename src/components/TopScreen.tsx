@@ -28,8 +28,8 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
     <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center gap-8 px-5 pt-10 pb-24">
       {/* 背景装飾 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="drift absolute -left-16 top-16 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="drift-slow absolute -right-10 top-0 h-80 w-80 rounded-full bg-fuchsia-500/10 blur-3xl" />
+        <div className="absolute -left-16 top-16 h-72 w-72 rounded-full ambient-cyan" />
+        <div className="absolute -right-10 top-0 h-80 w-80 rounded-full ambient-magenta" />
         <div className="noise absolute inset-0 opacity-40" />
         <div className="grid-overlay absolute inset-0" />
       </div>
@@ -79,7 +79,7 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
               <IconBolt size={12} /> 通信ラグ補正
             </span>
             <span className="chip gap-1.5 text-cyan-200/90">
-              <IconUsers size={12} /> 最大6人で対戦
+              <IconUsers size={12} /> 人数制限なしで対戦
             </span>
           </div>
         </div>
@@ -97,7 +97,7 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
           <div className="relative grid grid-cols-4 gap-2">
             {['7', '3', '8', '2'].map((n, i) => (
               <div key={i} className="aspect-square">
-                <span className="tile" style={{ cursor: 'default' }}>
+                <span className="tile title-example-tile" style={{ cursor: 'default' }}>
                   {n}
                 </span>
               </div>
