@@ -25,7 +25,7 @@ export function TopScreen({ busy, error, authError, onCreate, onJoin, onSolo }: 
   const canGo = !!name.trim() && !busy;
 
   return (
-    <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center gap-8 px-5 py-12">
+    <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center gap-8 px-5 pt-10 pb-24">
       {/* 背景装飾 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="drift absolute -left-16 top-16 h-72 w-72 rounded-full bg-cyan-500/10 blur-3xl" />

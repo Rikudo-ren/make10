@@ -272,7 +272,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                     >
                       {s.formula} = {puzzle.target}
                       {isMyAnswer && (
-                        <span className="jp ml-2 text-[10px] text-emerald-300">← あなたの解答</span>
+                        <span className="jp ml-2 text-[10px] text-emerald-300">あなたの解答</span>
                       )}
                     </li>
                   );

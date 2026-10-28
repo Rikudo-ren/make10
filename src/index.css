@@ -224,6 +224,8 @@ body {
 .drift { animation: drift 16s ease-in-out infinite; }
 .drift-slow { animation: drift 26s ease-in-out infinite; }
 
+/* Tailwind の utilities で上書きできるよう components レイヤーに入れる */
+@layer components {
 /* =========================================================
    タイポグラフィ
    ========================================================= */
@@ -352,26 +354,35 @@ body {
   opacity: 0.8;
 }
 
-/* HUD の角飾り */
+/* HUD の角飾り（.card::after / .card-accent::before を打ち消してから描く） */
 .hud-corner::before,
 .hud-corner::after {
   content: "";
   position: absolute;
+  inset: auto;
   width: 14px;
   height: 14px;
-  border-color: rgba(34, 224, 255, 0.75);
-  border-style: solid;
+  padding: 0;
+  border: 0 solid transparent;
+  background: none;
+  opacity: 1;
+  mix-blend-mode: normal;
+  -webkit-mask: none;
+  mask: none;
   pointer-events: none;
 }
 .hud-corner::before {
   top: 8px;
   left: 8px;
-  border-width: 1px 0 0 1px;
+  border-top-width: 1px;
+  border-left-width: 1px;
+  border-color: rgba(34, 224, 255, 0.75);
 }
 .hud-corner::after {
   right: 8px;
   bottom: 8px;
-  border-width: 0 1px 1px 0;
+  border-right-width: 1px;
+  border-bottom-width: 1px;
   border-color: rgba(255, 62, 200, 0.7);
 }
 
@@ -690,6 +701,7 @@ select.input {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
 }
 
 /* =========================================================

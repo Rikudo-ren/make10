@@ -167,11 +167,23 @@ export function RankBadge({ rank, size = 'md' }: { rank: number; size?: 'sm' | '
   const num = size === 'lg' ? 'text-[30px]' : size === 'sm' ? 'text-[15px]' : 'text-[21px]';
   return (
     <span
-      className={cn('rank-badge shrink-0 flex-col gap-[1px]', tone, box)}
+      className={cn(
+        'rank-badge shrink-0',
+        size === 'sm' ? 'flex-row gap-[1px]' : 'flex-col gap-[1px]',
+        tone,
+        box,
+      )}
       aria-label={`${rank}位`}
     >
       <span className={cn('num leading-none font-black', num)}>{rank}</span>
-      {size !== 'sm' && <span className="text-[8px] leading-none tracking-[.25em] opacity-80">位</span>}
+      <span
+        className={cn(
+          'leading-none opacity-85',
+          size === 'sm' ? 'text-[10px] tracking-normal' : 'text-[8px] tracking-[.25em]',
+        )}
+      >
+        位
+      </span>
     </span>
   );
 }
