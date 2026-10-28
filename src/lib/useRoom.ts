@@ -25,6 +25,7 @@ import {
   type RoomIndex,
 } from './roomCleanup';
 import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } from './types';
+import { assignTeams, clampTeamCount } from './teams';
 
 export { EMPTY_ROOM_GRACE_MS, ROOM_TTL_MS, SWEEP_INTERVAL_MS } from './roomCleanup';
 
@@ -545,6 +546,58 @@ export function useRoom() {
     [isGM, roomId],
   );
 
+  /** チーム戦: GMが特定プレイヤーの所属チームを変更する（ロビーの手動分け用） */
+  const setPlayerTeam = useCallback(
+    async (targetUid: string, teamId: number | null) => {
+      markActivityRef.current();
+      const code = roomIdRef.current;
+      const data = roomRef.current;
+      if (!code || !data || data.gmUid !== uidRef.current) return;
+      const teamCount = clampTeamCount(normalizeSettings(data.settings).teamCount);
+      const value =
+        teamId === null || !Number.isFinite(teamId)
+          ? null
+          : Math.min(teamCount - 1, Math.max(0, Math.floor(teamId)));
+      try {
+        await set(ref(db, `rooms/${code}/players/${targetUid}/teamId`), value);
+      } catch (e: any) {
+        setError(e?.message ?? 'チームの変更に失敗しました');
+      }
+    },
+    [],
+  );
+
+  /**
+   * チーム戦: 現在の設定でチーム分けを実行して全員へ配信する（GMのみ）。
+   * ロビーで事前に振り分けて確認したり、ランダムを振り直したりするのに使う。
+   * 試合開始時（startMatch）にも同じ処理が走るため、ここで分けなくても開始できる。
+   */
+  const assignTeamsNow = useCallback(async () => {
+    markActivityRef.current();
+    const code = roomIdRef.current;
+    const data = roomRef.current;
+    if (!code || !data || data.gmUid !== uidRef.current) return;
+    const settings = normalizeSettings(data.settings);
+    if (settings.battleMode !== 'team') return;
+    const list = Object.entries(data.players ?? {})
+      .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+      .map(([pUid, v]) => ({ uid: pUid, name: v.name, score: v.score ?? 0, teamId: v.teamId ?? null }));
+    const assignment = assignTeams({
+      players: list,
+      teamCount: settings.teamCount,
+      mode: settings.teamAssignMode,
+    });
+    try {
+      const updates: Record<string, number> = {};
+      for (const [pUid, teamId] of Object.entries(assignment)) {
+        updates[`rooms/${code}/players/${pUid}/teamId`] = teamId;
+      }
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    } catch (e: any) {
+      setError(e?.message ?? 'チーム分けに失敗しました');
+    }
+  }, []);
+
   /**
    * 出題を生成して配信（GMのみ）。
    * 生成は非同期・タイムスライスなので、重い設定でもブラウザが固まらない。
@@ -617,6 +670,33 @@ export function useRoom() {
     const ids = Object.keys(data.players ?? {});
     for (const id of ids) {
       await set(ref(db, `rooms/${code}/players/${id}/score`), 0);
+    }
+    // チーム分け: バランス/ランダムは開始時に確定、手動はロビーの所属を引き継ぎ
+    // 未所属だけ人数の少ないチームへ補充する。個人戦なら以前の所属を取り除く。
+    // ※ バランス分けはリセット前のスコア（前回の結果）を使うので、得点リセットより
+    //    先に data から読むこと（data はリセット前のスナップショット）。
+    if (settings.battleMode === 'team') {
+      const list = Object.entries(data.players ?? {})
+        .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+        .map(([pUid, v]) => ({ uid: pUid, name: v.name, score: v.score ?? 0, teamId: v.teamId ?? null }));
+      const assignment = assignTeams({
+        players: list,
+        teamCount: settings.teamCount,
+        mode: settings.teamAssignMode,
+      });
+      const updates: Record<string, number> = {};
+      for (const [pUid, teamId] of Object.entries(assignment)) {
+        updates[`rooms/${code}/players/${pUid}/teamId`] = teamId;
+      }
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
+    } else {
+      const updates: Record<string, null> = {};
+      for (const id of ids) {
+        if (data.players?.[id]?.teamId != null) {
+          updates[`rooms/${code}/players/${id}/teamId`] = null;
+        }
+      }
+      if (Object.keys(updates).length > 0) await update(ref(db), updates);
     }
     const prev = data.currentRound;
     await startRound(startIndex, startIndex, settings, prev ? puzzleKey(prev) : undefined);
@@ -935,6 +1015,8 @@ export function useRoom() {
     leaveRoom,
     setReady,
     updateSettings,
+    setPlayerTeam,
+    assignTeamsNow,
     startMatch,
     submitAnswer,
     passRound,

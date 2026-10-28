@@ -22,6 +22,91 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* ===== 対戦形式（個人戦 / チーム戦） ===== */}
+      <div className="border border-white/10 bg-black/25 p-3">
+        <div className="label jp mb-2 tracking-[.18em] text-cyan-200/70">対戦形式</div>
+        <div className="flex flex-wrap gap-2">
+          <Chip
+            disabled={dis}
+            active={s.battleMode === 'solo'}
+            onClick={() => onChange({ battleMode: 'solo' })}
+          >
+            個人戦
+          </Chip>
+          <Chip
+            disabled={dis}
+            active={s.battleMode === 'team'}
+            onClick={() => onChange({ battleMode: 'team' })}
+          >
+            チーム戦
+          </Chip>
+        </div>
+
+        {s.battleMode === 'team' && (
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field label="チーム数">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.teamCount}
+                  onChange={(e) => onChange({ teamCount: Number(e.target.value) })}
+                >
+                  {[2, 3, 4].map((n) => (
+                    <option key={n} value={n}>
+                      {n}チーム
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="チーム分け">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.teamAssignMode}
+                  onChange={(e) => onChange({ teamAssignMode: e.target.value as Settings['teamAssignMode'] })}
+                >
+                  <option value="balanced">バランス（強さ順に蛇行）</option>
+                  <option value="random">ランダム</option>
+                  <option value="manual">GMが手動で指定</option>
+                </select>
+              </Field>
+              <Field label="勝利条件">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.teamWinCondition}
+                  onChange={(e) => onChange({ teamWinCondition: e.target.value as Settings['teamWinCondition'] })}
+                >
+                  <option value="totalScore">合計点数で勝負</option>
+                  <option value="firstPlaceCount">1位獲得数で勝負</option>
+                  <option value="correctCount">正解数で勝負</option>
+                  <option value="averageScore">平均点で勝負（人数差に強い）</option>
+                </select>
+              </Field>
+            </div>
+            <p className="jp text-[11px] leading-relaxed text-slate-400">
+              {s.teamAssignMode === 'balanced' &&
+                'チーム分け「バランス」：直前のスコアが高い順に並べ、A→B→…→B→A と蛇行させて振り分けるので実力が偏りません（初回は参加順）。'}
+              {s.teamAssignMode === 'random' &&
+                'チーム分け「ランダム」：シャッフルして均等に振り分けます。ロビーで振り分け直すこともできます。'}
+              {s.teamAssignMode === 'manual' &&
+                'チーム分け「手動」：ロビーでGMが各プレイヤーの所属を選べます。未指定の人は開始時に人数の少ないチームへ入ります。'}
+              <br />
+              {s.teamWinCondition === 'totalScore' &&
+                '勝利条件はメンバー全員の合計点です。個人の配点はいつも通り順位ごとに付きます。'}
+              {s.teamWinCondition === 'firstPlaceCount' &&
+                '勝利条件は「そのチームのメンバーが1位を取った回数」です。合計点は同点時の参考表示のみ。'}
+              {s.teamWinCondition === 'correctCount' &&
+                '勝利条件はメンバー全員の正解数の合計です（入賞枠に入った解答が対象）。'}
+              {s.teamWinCondition === 'averageScore' &&
+                '勝利条件はメンバー1人あたりの平均点です。チームの人数がそろっていなくても公平に競えます。'}
+              {' '}選んだ勝利条件の値が同点なら引き分けです。
+            </p>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="数字の個数">
           <select

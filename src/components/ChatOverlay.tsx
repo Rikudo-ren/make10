@@ -11,8 +11,9 @@ interface FloatItem {
 }
 
 /** 1件が「下から上へゆっくり流れて消える」までの時間 */
-const LIFETIME_MS = 10000;
-const MAX_STACK = 3;
+const LIFETIME_MS = 9000;
+/** 同時に画面へ流す最大件数（ゴッドフィールドのように何行か重なって流れる） */
+const MAX_STACK = 6;
 
 function hueOf(uid: string) {
   let h = 0;
@@ -22,8 +23,15 @@ function hueOf(uid: string) {
 
 /**
  * ゴッドフィールド風のコメント表示。
- * コメントが来ると、全員の画面の下から「名前＋コメント」がゆっくり上へ流れていく。
- * 見逃してもログ（COMMS のログボタン）からいつでも読み返せる。
+ *
+ * - 画面に出るのは「名前：コメント」の文字だけ。プレート・枠・背景などの
+ *   ウィジェットは一切描かない（読みやすさは文字の縁取り＝text-shadow で確保する）。
+ * - 名前は省略しない（truncate / max-width で切らない。長い場合は折り返す）。
+ * - 当たり判定は一切持たない。ルートに pointer-events-none を付け、さらに
+ *   CSS の `.chat-float, .chat-float * { pointer-events: none !important }` で
+ *   子要素まで含めて保証する。後ろのタイルやボタンはそのまま押せる。
+ * - 新しいコメントは下に現れ、古いものと一緒にゆっくり上へ流れて消える。
+ *   見逃してもログ（COMMS ボタン）から読み返せる。
  */
 export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
   const { room, uid } = ctrl;
@@ -49,7 +57,8 @@ export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
 
     const added: FloatItem[] = fresh.slice(-MAX_STACK).map(([id, m]) => ({
       key: id,
-      name: (m.name || 'PLAYER').slice(0, 20),
+      // DB上限（20文字）まではそのまま出す。CSS側でも一切切らない
+      name: m.name || 'PLAYER',
       text: m.text,
       mine: m.uid === uid,
       hue: hueOf(m.uid || id),
@@ -76,51 +85,40 @@ export function ChatOverlay({ ctrl }: { ctrl: UseRoom }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[12vh] z-[25] flex flex-col items-center gap-2 px-4">
+    <div
+      aria-hidden="true"
+      className="chat-float pointer-events-none fixed inset-x-0 bottom-[9vh] z-[25] flex flex-col items-start gap-1 px-3 select-none sm:px-5"
+      style={{ pointerEvents: 'none' }}
+    >
       {items.map((it) => (
-        <div
+        <p
           key={it.key}
-          className="flex w-full max-w-2xl justify-center"
-          style={{ animation: `chat-drift ${LIFETIME_MS}ms linear forwards` }}
+          className="jp pointer-events-none max-w-full text-[17px] leading-snug font-black break-words sm:text-[22px]"
+          style={{
+            pointerEvents: 'none',
+            overflowWrap: 'anywhere',
+            animation: `chat-drift ${LIFETIME_MS}ms linear forwards`,
+            // 背景パネルなしでもゲーム画面の上で読めるよう、文字自体に濃い縁取りを付ける
+            textShadow:
+              '0 0 3px rgba(0,0,0,.95), 0 1px 1px rgba(0,0,0,1), 1px 0 1px rgba(0,0,0,.9), -1px 0 1px rgba(0,0,0,.9), 0 2px 12px rgba(0,0,0,.95)',
+          }}
         >
-          <div className="relative max-w-full">
-            {/* 斜めのプレート */}
-            <div
-              className="absolute inset-0 border border-white/15"
-              style={{
-                clipPath: 'polygon(16px 0,100% 0,calc(100% - 16px) 100%,0 100%)',
-                background:
-                  'linear-gradient(90deg, rgba(4,8,14,.92) 0%, rgba(6,14,24,.82) 60%, rgba(4,8,14,.55) 100%)',
-                boxShadow: `0 0 40px -18px hsla(${it.hue},100%,65%,.9)`,
-              }}
-            />
-            <div
-              className="absolute top-0 left-0 h-full w-[3px]"
-              style={{
-                background: `hsl(${it.hue} 100% 65%)`,
-                boxShadow: `0 0 16px hsl(${it.hue} 100% 65%)`,
-              }}
-            />
-            <div className="relative flex items-baseline gap-3 px-5 py-2.5">
-              <span
-                className="font-term max-w-[38%] shrink-0 truncate text-[13px] font-bold tracking-[.2em] sm:text-sm"
-                style={{
-                  color: it.mine ? '#7ef4ff' : `hsl(${it.hue} 100% 78%)`,
-                  textShadow: `0 0 14px hsla(${it.hue},100%,65%,.8)`,
-                }}
-              >
-                {it.name}
-                {it.mine && <span className="ml-1.5 text-[9px] text-cyan-300/70">YOU</span>}
-              </span>
-              <span
-                className="jp min-w-0 break-words text-[19px] leading-tight font-black text-white sm:text-[26px]"
-                style={{ textShadow: '0 2px 18px rgba(0,0,0,.95), 0 0 24px rgba(120,220,255,.35)' }}
-              >
-                {it.text}
-              </span>
-            </div>
-          </div>
-        </div>
+          <span
+            className="pointer-events-none"
+            style={{
+              pointerEvents: 'none',
+              color: it.mine ? '#7ef4ff' : `hsl(${it.hue} 100% 78%)`,
+            }}
+          >
+            {it.name}
+          </span>
+          <span className="pointer-events-none text-white/85" style={{ pointerEvents: 'none' }}>
+            ：
+          </span>
+          <span className="pointer-events-none text-white" style={{ pointerEvents: 'none' }}>
+            {it.text}
+          </span>
+        </p>
       ))}
     </div>
   );

@@ -4,6 +4,14 @@ import { normalizeSettings } from '../lib/types';
 import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
 import { ChatComposer } from './ChatDock';
+import { TeamBadge } from './TeamBadge';
+import {
+  computeTeamStandings,
+  formatPrimaryValue,
+  TEAM_DEFS,
+  WIN_CONDITION_LABEL,
+  WIN_CONDITION_UNIT,
+} from '../lib/teams';
 import { Button, Card, RankBadge, SectionTitle, formatMs } from './ui';
 import { IconAlert, IconArrowRight, IconCheck, IconClose, IconCrown, IconTrophy, IconUsers } from './icons';
 import { playSe } from '../lib/audio';
@@ -205,6 +213,22 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const myKey = uid && results[uid] ? results[uid].key : undefined;
   const showMask = isCountdown || transitioning;
 
+  // チーム戦の途中経過（勝利条件の値で並べる。現在のラウンドは履歴と二重に数えない）
+  const isTeam = settings.battleMode === 'team';
+  const teamData = useMemo(() => {
+    if (!isTeam) return null;
+    const merged: Record<string, any> = { ...(room?.history ?? {}) };
+    if (r?.results) merged[String(r.roundIndex)] = r;
+    return computeTeamStandings({
+      players,
+      teamCount: settings.teamCount,
+      winCondition: settings.teamWinCondition,
+      history: merged,
+      matchStartIndex,
+    });
+  }, [isTeam, room?.history, r, players, settings.teamCount, settings.teamWinCondition, matchStartIndex]);
+  const myTeamId = uid ? players.find((p) => p.uid === uid)?.teamId : null;
+
   return (
     <div className="relative mx-auto w-full max-w-6xl px-4 py-4 pb-20" data-tick={tick}>
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -266,6 +290,39 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             )}
             style={{ width: `${Math.max(0, timeFrac * 100)}%` }}
           />
+        </div>
+      )}
+
+      {isTeam && teamData && (
+        <div className="mb-3.5 flex flex-wrap items-stretch gap-2">
+          <span className="chip shrink-0 self-center text-[9px] text-slate-300">
+            TEAM // 勝利条件: {WIN_CONDITION_LABEL[settings.teamWinCondition]}
+          </span>
+          {teamData.standings.map((t, i) => (
+            <div
+              key={t.teamId}
+              className={cn(
+                'jp flex min-w-[132px] flex-1 items-center gap-2 border px-2.5 py-1.5',
+                myTeamId === t.teamId && 'ring-1 ring-white/40',
+              )}
+              style={{ borderColor: `${t.def.color}55`, background: `${t.def.color}12` }}
+            >
+              <span className="num text-[11px] font-black text-slate-400">{i + 1}</span>
+              <span className="text-[12px] font-black whitespace-nowrap" style={{ color: t.def.color }}>
+                {t.def.label}
+              </span>
+              <span className="num ml-auto text-[15px] font-black text-white tabular-nums">
+                {settings.hideLiveAnswers && !judging
+                  ? '—'
+                  : `${formatPrimaryValue(t.primaryValue, settings.teamWinCondition)}${WIN_CONDITION_UNIT[settings.teamWinCondition]}`}
+              </span>
+              {(!settings.hideLiveAnswers || judging) && (
+                <span className="jp hidden text-[9px] whitespace-nowrap text-slate-500 sm:inline">
+                  合計{t.totalScore}点・{t.members.length}人
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -353,12 +410,13 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                         hasSolved && (!settings.hideLiveAnswers || p.uid === uid || judging) && 'border-emerald-400/90 bg-emerald-500/8',
                       )}
                     >
-                      <span className="flex min-w-0 items-center gap-1.5 truncate font-bold text-white">
+                      <span className="flex min-w-0 flex-wrap items-center gap-1.5 font-bold text-white">
                         {p.uid === room.gmUid && <IconCrown size={11} className="shrink-0 text-amber-300" />}
-                        <span className="truncate">{p.name}</span>
+                        <span className="break-words" style={{ overflowWrap: 'anywhere' }}>{p.name}</span>
                         {p.uid === uid && (
                           <span className="shrink-0 text-[8px] tracking-wider text-cyan-300/80">YOU</span>
                         )}
+                        {isTeam && <TeamBadge teamId={p.teamId} size="sm" />}
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
                         {settings.hideLiveAnswers && !judging && p.uid !== uid ? (
@@ -502,6 +560,25 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                   )}
                 </div>
 
+                {isTeam && (
+                  <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+                    {TEAM_DEFS.slice(0, settings.teamCount).map((def) => {
+                      const gained = ranked
+                        .filter(([id]) => players.find((p) => p.uid === id)?.teamId === def.id)
+                        .reduce((sum, [, res]) => sum + (res.gained ?? 0), 0);
+                      return (
+                        <span
+                          key={def.id}
+                          className="jp px-2 py-1 text-[10px] font-black"
+                          style={{ color: def.color, border: `1px solid ${def.color}55`, background: `${def.color}14` }}
+                        >
+                          {def.label} この問 +{gained}点
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className="mt-4">
                   <div className="label mb-2 text-slate-400">SCOREBOARD</div>
                   <ul className="space-y-1.5">
@@ -518,10 +595,13 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                         <RankBadge rank={res.rank} size="sm" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="jp truncate text-[12px] font-bold text-slate-200">
+                            <span className="jp flex min-w-0 flex-wrap items-center gap-1 text-[12px] font-bold break-words text-slate-200" style={{ overflowWrap: 'anywhere' }}>
                               {nameOf(id)}
                               {id === uid && (
-                                <span className="ml-1 text-[9px] tracking-wider text-cyan-300">YOU</span>
+                                <span className="shrink-0 text-[9px] tracking-wider text-cyan-300">YOU</span>
+                              )}
+                              {isTeam && (
+                                <TeamBadge teamId={players.find((p) => p.uid === id)?.teamId} size="sm" />
                               )}
                             </span>
                             <span className="num shrink-0 text-[11px] tabular-nums text-cyan-200/80">

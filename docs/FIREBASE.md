@@ -13,7 +13,7 @@
 
 | パス | 内容 | 保存される期間 |
 | --- | --- | --- |
-| `rooms/{code}/players/...` | ニックネーム・得点・準備OK | **誰もいなければ即、在室中でも最終アクセスから24時間** |
+| `rooms/{code}/players/...` | ニックネーム・得点・準備OK・所属チーム（`teamId`、チーム戦のみ） | **誰もいなければ即、在室中でも最終アクセスから24時間** |
 | `rooms/{code}/currentRound` | 出題中の問題・解答例・結果 | 同上 |
 | `rooms/{code}/answers/{round}/{uid}` | 各ラウンドの解答・パスの記録 | 同上 |
 | `rooms/{code}/history/{round}` | 終わったラウンドの結果 | 同上 |
@@ -117,7 +117,8 @@ Firebase コンソール → **Realtime Database** → **ルール** タブに�
           "$uid": {
             "name": { ".validate": "newData.isString() && newData.val().length <= 20" },
             "score": { ".validate": "newData.isNumber()" },
-            "isReady": { ".validate": "newData.isBoolean()" }
+            "isReady": { ".validate": "newData.isBoolean()" },
+            "teamId": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3" }
           }
         }
       }

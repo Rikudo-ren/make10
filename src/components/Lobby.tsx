@@ -4,6 +4,8 @@ import { normalizeSettings } from '../lib/types';
 import { SettingsPanel } from './SettingsPanel';
 import { Button, Card, ConfirmDialog, SectionTitle } from './ui';
 import { IconCheck, IconCopy, IconCrown, IconGear, IconPlay, IconUsers } from './icons';
+import { TeamBadge } from './TeamBadge';
+import { TEAM_DEFS } from '../lib/teams';
 import { playSe } from '../lib/audio';
 import { cn } from '../utils/cn';
 
@@ -15,7 +17,11 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
   const settings = normalizeSettings(room.settings);
   const me = players.find((p) => p.uid === uid);
   const allReady = players.every((p) => p.isReady || p.uid === room.gmUid);
-  const canStart = isGM && players.length >= 1 && (!settings.requireAllReady || allReady);
+  const isTeam = settings.battleMode === 'team';
+  // チーム戦は「全チームに最低1人」入る人数がそろわないと開始できない
+  const teamPlayersEnough = !isTeam || players.length >= settings.teamCount;
+  const canStart =
+    isGM && players.length >= 1 && teamPlayersEnough && (!settings.requireAllReady || allReady);
 
   const copy = () => {
     navigator.clipboard?.writeText(roomId ?? '');
@@ -99,28 +105,103 @@ export function Lobby({ ctrl }: { ctrl: UseRoom }) {
                     p.uid === uid ? 'border-cyan-300/90 bg-cyan-400/8' : 'border-white/12 bg-black/25',
                   )}
                 >
-                  <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-bold text-white">
+                  <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] font-bold text-white">
                     {p.uid === room.gmUid && <IconCrown size={12} className="shrink-0 text-amber-300" />}
-                    <span className="truncate">{p.name}</span>
+                    <span className="break-words" style={{ overflowWrap: 'anywhere' }}>{p.name}</span>
                     {p.uid === uid && (
                       <span className="shrink-0 text-[8px] tracking-wider text-cyan-300/80">YOU</span>
                     )}
+                    {isTeam && <TeamBadge teamId={p.teamId} size="sm" />}
                   </span>
-                  <span
-                    className={cn(
-                      'shrink-0 text-[9px] font-bold tracking-wider',
-                      p.uid === room.gmUid
-                        ? 'text-amber-300'
-                        : p.isReady
-                          ? 'text-emerald-300'
-                          : 'text-slate-500',
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {isTeam && isGM && settings.teamAssignMode === 'manual' && (
+                      <select
+                        className="input w-[86px] shrink-0 px-1.5 py-1 text-[10px]"
+                        value={p.teamId ?? ''}
+                        aria-label={`${p.name}のチーム`}
+                        onChange={(e) =>
+                          ctrl.setPlayerTeam(
+                            p.uid,
+                            e.target.value === '' ? null : Number(e.target.value),
+                          )
+                        }
+                      >
+                        <option value="">未定</option>
+                        {TEAM_DEFS.slice(0, settings.teamCount).map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
                     )}
-                  >
-                    {p.uid === room.gmUid ? 'HOST' : p.isReady ? 'READY' : 'STANDBY'}
+                    <span
+                      className={cn(
+                        'shrink-0 text-[9px] font-bold tracking-wider',
+                        p.uid === room.gmUid
+                          ? 'text-amber-300'
+                          : p.isReady
+                            ? 'text-emerald-300'
+                            : 'text-slate-500',
+                      )}
+                    >
+                      {p.uid === room.gmUid ? 'HOST' : p.isReady ? 'READY' : 'STANDBY'}
+                    </span>
                   </span>
                 </li>
               ))}
             </ul>
+            {isTeam && (
+              <div className="mt-3 border border-white/10 bg-white/[0.03] p-2.5">
+                <div className="label jp mb-1.5 text-[9px] tracking-[.18em] text-slate-400">
+                  TEAMS // {settings.teamCount}チーム・
+                  {settings.teamAssignMode === 'manual'
+                    ? 'GM手動'
+                    : settings.teamAssignMode === 'random'
+                      ? 'ランダム'
+                      : 'バランス'}
+                </div>
+                <div className="space-y-1">
+                  {TEAM_DEFS.slice(0, settings.teamCount).map((t) => {
+                    const members = players.filter((p) => p.teamId === t.id);
+                    return (
+                      <div key={t.id} className="jp flex flex-wrap items-baseline gap-x-1.5 text-[10px] leading-relaxed">
+                        <span className="font-black" style={{ color: t.color }}>{t.label}</span>
+                        <span className="text-slate-400">
+                          {members.length > 0 ? members.map((m) => m.name).join('、') : '（未定）'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {players.some((p) => p.teamId == null) && (
+                    <div className="jp text-[10px] text-slate-500">
+                      未所属: {players.filter((p) => p.teamId == null).map((m) => m.name).join('、')}
+                    </div>
+                  )}
+                </div>
+                {isGM && settings.teamAssignMode !== 'manual' && (
+                  <Button
+                    variant="ghost"
+                    className="mt-2 w-full py-2 text-[10px]"
+                    onClick={() => {
+                      playSe('toggle');
+                      void ctrl.assignTeamsNow();
+                    }}
+                  >
+                    {settings.teamAssignMode === 'random' ? 'チームを振り分ける（振り直し可）' : 'チームを振り分ける'}
+                  </Button>
+                )}
+                {isGM && settings.teamAssignMode === 'manual' && (
+                  <p className="jp mt-1.5 text-[9px] leading-relaxed text-slate-500">
+                    各プレイヤー右のプルダウンで所属を選んでください。未定の人は開始時に自動で補充されます。
+                  </p>
+                )}
+                {!teamPlayersEnough && (
+                  <p className="jp mt-1.5 text-[10px] font-bold text-amber-300">
+                    チーム戦は{settings.teamCount}人以上そろわないと開始できません
+                  </p>
+                )}
+              </div>
+            )}
             {isGM && (
               <Button
                 className="mt-3.5 w-full gap-2 py-3.5"
