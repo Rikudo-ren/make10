@@ -25,6 +25,8 @@ export const TEAM_DEFS: TeamDef[] = [
   { id: 1, label: 'チームB', short: 'B', color: '#ff3ec8' },
   { id: 2, label: 'チームC', short: 'C', color: '#ffb020' },
   { id: 3, label: 'チームD', short: 'D', color: '#b6ff3c' },
+  { id: 4, label: 'チームE', short: 'E', color: '#a78bfa' },
+  { id: 5, label: 'チームF', short: 'F', color: '#ff7a59' },
 ];
 
 export const MAX_TEAMS = TEAM_DEFS.length;
@@ -206,6 +208,51 @@ export function computeTeamStandings(args: {
       a.teamId - b.teamId,
   );
   return { standings, unassigned };
+}
+
+export interface IndividualStanding {
+  /** 個人順位（得点→1位数→正解数で並べた表示順。そのまま 1,2,3… と振る） */
+  rank: number;
+  uid: string;
+  name: string;
+  teamId: number | null;
+  score: number;
+  firstPlaceCount: number;
+  correctCount: number;
+}
+
+/**
+ * 個人成績の一覧。チーム戦でも個人戦でも使う。
+ * チーム順位とは独立に、得点が高い順（同点なら1位数→正解数→名前）で並べる。
+ */
+export function computeIndividualStandings(args: {
+  players: TeamPlayerInput[];
+  history?: TeamHistory | null;
+  matchStartIndex?: number;
+}): IndividualStanding[] {
+  const counts = countPlayerResults(args.history, args.matchStartIndex ?? 0);
+  const rows = args.players
+    .filter((p) => p && typeof p.uid === 'string')
+    .map((p) => {
+      const c = counts.get(p.uid) ?? { firstPlaceCount: 0, correctCount: 0 };
+      return {
+        uid: p.uid,
+        name: p.name ?? 'プレイヤー',
+        teamId: typeof p.teamId === 'number' && Number.isFinite(p.teamId) ? Math.floor(p.teamId) : null,
+        score: p.score ?? 0,
+        firstPlaceCount: c.firstPlaceCount,
+        correctCount: c.correctCount,
+      };
+    });
+  rows.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.firstPlaceCount - a.firstPlaceCount ||
+      b.correctCount - a.correctCount ||
+      a.name.localeCompare(b.name, 'ja') ||
+      a.uid.localeCompare(b.uid),
+  );
+  return rows.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
 /** 優勝チーム一覧。primaryValue が同値で並んだ場合は複数返る（= 引き分け） */

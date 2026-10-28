@@ -7,7 +7,7 @@ export type { BattleMode, TeamAssignMode, TeamWinCondition };
 export interface Settings {
   /** 個人戦 'solo' / チーム戦 'team' */
   battleMode: BattleMode;
-  /** チーム数（2〜4、チーム戦のみ） */
+  /** チーム数（2〜6、チーム戦のみ） */
   teamCount: number;
   /** チーム分けの方法（チーム戦のみ） */
   teamAssignMode: TeamAssignMode;

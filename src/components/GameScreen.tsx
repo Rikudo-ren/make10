@@ -5,7 +5,9 @@ import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
 import { ChatComposer } from './ChatDock';
 import { TeamBadge } from './TeamBadge';
+import { IndividualStandings } from './IndividualStandings';
 import {
+  computeIndividualStandings,
   computeTeamStandings,
   formatPrimaryValue,
   TEAM_DEFS,
@@ -228,6 +230,20 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
     });
   }, [isTeam, room?.history, r, players, settings.teamCount, settings.teamWinCondition, matchStartIndex]);
   const myTeamId = uid ? players.find((p) => p.uid === uid)?.teamId : null;
+
+  // 個人成績（チーム順位とは別に、対戦中も常に確認できる）
+  const individualRows = useMemo(() => {
+    const merged: Record<string, any> = { ...(room?.history ?? {}) };
+    if (r?.results) merged[String(r.roundIndex)] = r;
+    return computeIndividualStandings({ players, history: merged, matchStartIndex });
+  }, [room?.history, r, players, matchStartIndex]);
+  const revealIndividual = !settings.hideLiveAnswers || judging;
+  // 非公開中は得点順で並べると順位が漏れるため、参加順のまま渡す
+  const displayIndividualRows = revealIndividual
+    ? individualRows
+    : players
+        .map((p) => individualRows.find((row) => row.uid === p.uid))
+        .filter((row): row is NonNullable<typeof row> => !!row);
 
   return (
     <div className="relative mx-auto w-full max-w-6xl px-4 py-4 pb-20" data-tick={tick}>
@@ -481,6 +497,27 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               コメントは左下の COMMS ボタンからログで読み返せます
             </p>
           </Card>
+
+          {/* チーム戦でも個人成績はここで常時確認できる（チーム順位とは別立て） */}
+          {isTeam && (
+            <Card>
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <SectionTitle>個人成績</SectionTitle>
+                <span className="jp text-[9px] text-slate-500">チーム順位とは別</span>
+              </div>
+              <IndividualStandings
+                rows={displayIndividualRows}
+                myUid={uid}
+                reveal={revealIndividual}
+                compact
+              />
+              {!revealIndividual && (
+                <p className="jp mt-2 text-[9px] leading-relaxed text-slate-500">
+                  「結果発表まで隠す」がONのため、個人の順位・得点は結果発表で公開されます
+                </p>
+              )}
+            </Card>
+          )}
 
         </div>
       </div>

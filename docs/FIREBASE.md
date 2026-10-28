@@ -118,7 +118,7 @@ Firebase コンソール → **Realtime Database** → **ルール** タブに�
             "name": { ".validate": "newData.isString() && newData.val().length <= 20" },
             "score": { ".validate": "newData.isNumber()" },
             "isReady": { ".validate": "newData.isBoolean()" },
-            "teamId": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3" }
+            "teamId": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" }
           }
         }
       }

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   assignTeams,
+  computeIndividualStandings,
   computeTeamStandings,
   getWinningTeams,
 } from '../src/lib/teams.ts';
@@ -99,6 +100,68 @@ test('集計: matchStartIndex より前のラウンドは数えない（再戦�
   });
   assert.equal(standings.find((s) => s.teamId === 0).firstPlaceCount, 0);
   assert.equal(standings.find((s) => s.teamId === 1).firstPlaceCount, 1);
+});
+
+test('チーム分け: 3〜6チームでも全チームに人が入り、人数差は最大1', () => {
+  const list = Array.from({ length: 13 }, (_, i) => ({
+    uid: `p${i}`,
+    name: `p${i}`,
+    score: 13 - i,
+    teamId: null,
+  }));
+  for (const teamCount of [3, 4, 5, 6]) {
+    for (const mode of ['balanced', 'random']) {
+      const assigned = assignTeams({ players: list, teamCount, mode, rng: () => 0.37 });
+      assert.equal(Object.keys(assigned).length, list.length, `${teamCount}/${mode}`);
+      const sizes = Array.from({ length: teamCount }, (_, t) =>
+        Object.values(assigned).filter((v) => v === t).length,
+      );
+      assert.ok(sizes.every((n) => n >= 1), `${teamCount}/${mode}: ${sizes}`);
+      assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, `${teamCount}/${mode}: ${sizes}`);
+    }
+  }
+});
+
+test('チーム分け: 3チームのバランスは蛇行（A B C C B A A…）になる', () => {
+  const list = players(['p1', 70], ['p2', 60], ['p3', 50], ['p4', 40], ['p5', 30], ['p6', 20], ['p7', 10]);
+  const assigned = assignTeams({ players: list, teamCount: 3, mode: 'balanced' });
+  assert.deepEqual(assigned, { p1: 0, p2: 1, p3: 2, p4: 2, p5: 1, p6: 0, p7: 0 });
+});
+
+test('チーム分け: 手動でチームE（5チーム目）も保持できる', () => {
+  const assigned = assignTeams({
+    players: players(['a', 0, 4], ['b', 0, 3], ['c', 0]),
+    teamCount: 5,
+    mode: 'manual',
+  });
+  assert.equal(assigned.a, 4);
+  assert.equal(assigned.b, 3);
+  assert.ok(assigned.c >= 0 && assigned.c < 5);
+});
+
+test('集計: 3チーム以上でも順位と勝者を判定できる', () => {
+  const list = players(['a', 10, 0], ['b', 30, 1], ['c', 20, 2]);
+  const { standings } = computeTeamStandings({
+    players: list,
+    teamCount: 3,
+    winCondition: 'totalScore',
+    history: {},
+  });
+  assert.deepEqual(standings.map((s) => s.teamId), [1, 2, 0]);
+  assert.equal(getWinningTeams(standings)[0].teamId, 1);
+});
+
+test('個人成績: チーム所属を保ったまま得点順に並び、1位数・正解数も付く', () => {
+  const rows = computeIndividualStandings({
+    players: players(['a', 10, 0], ['b', 30, 1], ['c', 20, 1]),
+    history: HISTORY,
+  });
+  assert.deepEqual(rows.map((r) => r.uid), ['b', 'c', 'a']);
+  assert.deepEqual(rows.map((r) => r.rank), [1, 2, 3]);
+  assert.equal(rows[0].teamId, 1);
+  assert.equal(rows[0].firstPlaceCount, 1); // b は round 1 で1位
+  assert.equal(rows[1].correctCount, 3); // c は3ラウンド正解
+  assert.equal(rows[2].score, 10);
 });
 
 test('集計: 未所属のプレイヤーはどのチームにも数えない', () => {

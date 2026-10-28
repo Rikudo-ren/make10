@@ -3,8 +3,9 @@ import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
 import { Button, Card, ConfirmDialog, RankBadge } from './ui';
 import { IconCrown, IconTrophy } from './icons';
-import { TeamBadge } from './TeamBadge';
+import { IndividualStandings } from './IndividualStandings';
 import {
+  computeIndividualStandings,
   computeTeamStandings,
   formatPrimaryValue,
   getWinningTeams,
@@ -17,9 +18,7 @@ import { cn } from '../utils/cn';
 export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
   const { players, isGM, uid, room } = ctrl;
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  const ranking = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  const maxScore = Math.max(1, ...ranking.map((p) => p.score ?? 0));
-  const champ = ranking[0];
+  const champ = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
 
   // チーム戦の最終判定（選択した勝利条件の値だけで決める。同値なら引き分け）
   const settings = normalizeSettings(room?.settings);
@@ -39,6 +38,11 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
       })
     : { standings: [] };
   const winningTeams = isTeam ? getWinningTeams(teamStandings) : [];
+  const individualRows = computeIndividualStandings({
+    players,
+    history: mergedHistory,
+    matchStartIndex,
+  });
   const isDraw = winningTeams.length > 1;
   const myTeamId = uid ? players.find((p) => p.uid === uid)?.teamId : null;
   const playedRef = useRef(false);
@@ -140,7 +144,10 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
                     <div className="jp mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-slate-200">
                       {t.members.map((m) => (
                         <span key={m.uid} className={cn(m.uid === uid && 'font-black text-cyan-200')}>
-                          {m.name} <span className="num text-slate-400">{m.score}点</span>
+                          {m.name}{' '}
+                          <span className="num text-slate-400">
+                            {m.score}点・1位{m.firstPlaceCount}回・正解{m.correctCount}回
+                          </span>
                         </span>
                       ))}
                     </div>
@@ -180,62 +187,13 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
         </Card>
       )}
 
-      <div className="space-y-2">
-        {ranking.map((p, i) => {
-          const rank = i + 1;
-          const pct = ((p.score ?? 0) / maxScore) * 100;
-          return (
-            <div
-              key={p.uid}
-              className={cn(
-                'relative flex items-center gap-3 border px-3 py-2.5',
-                rank === 1
-                  ? 'border-amber-300/50 bg-amber-400/8'
-                  : rank === 2
-                    ? 'border-white/25 bg-white/[0.05]'
-                    : rank === 3
-                      ? 'border-orange-400/40 bg-orange-500/8'
-                      : 'border-white/10 bg-black/30',
-                p.uid === uid && 'ring-1 ring-cyan-400/40',
-              )}
-              style={{
-                clipPath:
-                  'polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)',
-              }}
-            >
-              <RankBadge rank={rank} />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="jp text-[14px] font-black break-words text-white" style={{ overflowWrap: 'anywhere' }}>{p.name}</span>
-                  {p.uid === uid && (
-                    <span className="shrink-0 text-[8px] tracking-wider text-cyan-300/80">YOU</span>
-                  )}
-                  {isTeam && <TeamBadge teamId={p.teamId} size="sm" />}
-                  {rank === 1 && <IconTrophy size={12} className="shrink-0 text-amber-300" />}
-                </div>
-                <div className="mt-1 h-1 w-full overflow-hidden bg-white/8">
-                  <div
-                    className={cn(
-                      'h-full',
-                      rank === 1
-                        ? 'bg-gradient-to-r from-amber-300 to-orange-400 shadow-[0_0_10px_rgba(255,176,32,.9)]'
-                        : rank === 2
-                          ? 'bg-gradient-to-r from-slate-200 to-cyan-200'
-                          : rank === 3
-                            ? 'bg-gradient-to-r from-orange-300 to-rose-300'
-                            : 'bg-gradient-to-r from-cyan-400/70 to-fuchsia-400/70',
-                    )}
-                    style={{ width: `${Math.max(4, pct)}%` }}
-                  />
-                </div>
-              </div>
-              <span className="num shrink-0 text-[24px] font-black text-amber-200 tabular-nums">
-                {p.score ?? 0}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      {/* 個人成績はチーム戦でも必ず表示する（チーム順位 → 個人順位の順） */}
+      {isTeam && (
+        <div className="label jp mb-2 text-center text-slate-400">
+          個人成績（順位・得点・1位数・正解数）
+        </div>
+      )}
+      <IndividualStandings rows={individualRows} myUid={uid} reveal />
 
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {isGM && (

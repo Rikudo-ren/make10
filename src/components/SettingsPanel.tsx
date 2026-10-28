@@ -45,19 +45,19 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
         {s.battleMode === 'team' && (
           <div className="mt-3 space-y-3">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Field label="チーム数">
-                <select
-                  className={inputCls}
-                  disabled={dis}
-                  value={s.teamCount}
-                  onChange={(e) => onChange({ teamCount: Number(e.target.value) })}
-                >
-                  {[2, 3, 4].map((n) => (
-                    <option key={n} value={n}>
-                      {n}チーム
-                    </option>
+              <Field label="チーム数（2〜6）">
+                <div className="flex flex-wrap gap-1.5">
+                  {[2, 3, 4, 5, 6].map((n) => (
+                    <Chip
+                      key={n}
+                      disabled={dis}
+                      active={s.teamCount === n}
+                      onClick={() => onChange({ teamCount: n })}
+                    >
+                      {n}
+                    </Chip>
                   ))}
-                </select>
+                </div>
               </Field>
               <Field label="チーム分け">
                 <select
@@ -86,6 +86,9 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
               </Field>
             </div>
             <p className="jp text-[11px] leading-relaxed text-slate-400">
+              チーム数は2〜6（3チーム以上の対戦も可能）。全チームに最低1人ずつ入るよう、
+              参加人数がチーム数に満たないときは開始できません。各チームの人数差は自動分けで最大1になります。
+              <br />
               {s.teamAssignMode === 'balanced' &&
                 'チーム分け「バランス」：直前のスコアが高い順に並べ、A→B→…→B→A と蛇行させて振り分けるので実力が偏りません（初回は参加順）。'}
               {s.teamAssignMode === 'random' &&
