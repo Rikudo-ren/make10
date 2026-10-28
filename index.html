@@ -1,12 +1,49 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>メイク10バトル | リアルタイム対戦メイク10</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>MAKE 10 BATTLE | リアルタイム計算対戦</title>
+    <meta
+      name="description"
+      content="出された数字を四則演算でつないで10を作る、リアルタイム対戦パズル。友だちと同問同時挑戦・早解きバトル。"
+    />
+    <meta name="theme-color" content="#04060d" />
+    <meta name="color-scheme" content="dark" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <!-- ログイン/同期の初回待ちを減らす（同一オリジンの音声・フォントは preload しない） -->
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://make10-47c34-default-rtdb.firebaseio.com" crossorigin />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="MAKE 10 BATTLE" />
+    <meta
+      property="og:description"
+      content="数字をつないで10を作れ。早解きリアルタイム計算バトル。"
+    />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <style>
+      /* JS 読み込み前のちらつき防止（背景だけ先に塗る） */
+      html,
+      body {
+        margin: 0;
+        background: #04060d;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript style="color: #dbe9ff; font-family: sans-serif; padding: 24px; display: block">
+      MAKE 10 BATTLE をプレイするには JavaScript を有効にしてください。
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
