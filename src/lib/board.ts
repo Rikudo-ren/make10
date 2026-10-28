@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EPS, formatExpr, makeOpNode, normalizeKey, num, type ExprNode, type Op } from './solver';
 
 export interface Tile {
@@ -15,7 +15,12 @@ function makeSlots(numbers: number[]): Slot[] {
   return numbers.map((n, i) => ({ id: i + 1, tile: { id: i + 1, expr: num(n) } }));
 }
 
-export function useBoard(numbers: number[], integerOnly: boolean) {
+/**
+ * @param resetToken これが変わると盤面を初期化する。
+ *   数字が同じでも次の問題（目標値違い）ならリセットするため、PlayArea から
+ *   「数字＋目標値＋ラウンド識別子」を渡している。
+ */
+export function useBoard(numbers: number[], integerOnly: boolean, resetToken?: string) {
   const [slots, setSlots] = useState<Slot[]>(() => makeSlots(numbers));
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [pendingOp, setPendingOp] = useState<Op | null>(null);
@@ -24,16 +29,21 @@ export function useBoard(numbers: number[], integerOnly: boolean) {
   const [nextId, setNextId] = useState(numbers.length + 1);
   const [flash, setFlash] = useState(0);
 
-  const key = numbers.join(',');
-  useEffect(() => {
+  const key = numbers.join(',') + '|' + (resetToken ?? '');
+  // 問題が変わったら「レンダー中」に盤面を作り直す。
+  // useEffect でリセットすると1フレームだけ前の問題の完成形が残り、
+  // 次のラウンド開始直後に「誤答」判定（お手つきロック）が走ることがあるため。
+  const keyRef = useRef(key);
+  if (keyRef.current !== key) {
+    keyRef.current = key;
     setSlots(makeSlots(numbers));
     setSelectedSlot(null);
     setPendingOp(null);
     setUndoStack([]);
     setRedoStack([]);
     setNextId(numbers.length + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+    setFlash(0);
+  }
 
   const tiles = useMemo(() => slots.flatMap((s) => (s.tile ? [s.tile] : [])), [slots]);
   const selected =

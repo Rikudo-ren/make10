@@ -1,22 +1,26 @@
+import { useState } from 'react';
 import type { UseRoom } from '../lib/useRoom';
-import { Button, Card } from './ui';
+import { ChatPanel } from './ChatPanel';
+import { Button, Card, ConfirmDialog } from './ui';
 import { cn } from '../utils/cn';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
   const { players, isGM, uid } = ctrl;
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
   const ranking = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   const maxScore = Math.max(1, ...ranking.map((p) => p.score ?? 0));
 
   return (
-    <div className="relative mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-4 py-8">
+    <div className="relative mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-8">
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="grid-overlay absolute inset-0" />
         <div className="drift absolute -right-10 top-16 h-64 w-64 rounded-full bg-amber-500/15 blur-3xl" />
         <div className="drift-slow absolute -left-10 bottom-10 h-64 w-64 rounded-full bg-indigo-600/20 blur-3xl" />
       </div>
 
+      <div className="mt-auto" />
       <div className="mb-6 text-center">
         <div className="chip mx-auto mb-3 inline-block border-amber-300/40 bg-amber-400/10 text-amber-200">
           FINAL RESULT
@@ -61,7 +65,7 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
 
       <div className="mt-6 flex justify-center gap-2">
         {isGM && <Button onClick={ctrl.backToLobby}>ロビーに戻る（再戦）</Button>}
-        <Button variant="ghost" onClick={ctrl.leaveRoom}>
+        <Button variant="ghost" onClick={() => (isGM ? setLeaveConfirm(true) : ctrl.leaveRoom())}>
           退出する
         </Button>
       </div>
@@ -70,6 +74,28 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
           GMがロビーに戻すと再戦できます。
         </p>
       )}
+
+      <ChatPanel ctrl={ctrl} className="mt-5" />
+
+      <div className="mb-auto" />
+
+      <ConfirmDialog
+        open={leaveConfirm}
+        title="ルームを解散しますか？"
+        description={
+          <>
+            GMが退出すると<b className="text-rose-300">ルームは削除されます</b>。
+            チャット・スコア・履歴も残りません。
+          </>
+        }
+        confirmLabel="解散して退出"
+        cancelLabel="やめる"
+        onConfirm={() => {
+          setLeaveConfirm(false);
+          ctrl.leaveRoom();
+        }}
+        onCancel={() => setLeaveConfirm(false)}
+      />
     </div>
   );
 }

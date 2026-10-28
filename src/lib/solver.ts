@@ -241,6 +241,17 @@ export interface SolveOptions {
   ops?: Op[];
   maxSolutions?: number;
   integerOnly?: boolean;
+  /**
+   * 探索ノード数の上限。巨大な設定でも1回の呼び出しを短時間で終わらせるために使う。
+   * 既定値は 4,000,000（従来と同じ）。
+   */
+  budget?: number;
+}
+
+export interface SolveResult {
+  solutions: Solution[];
+  /** true = 予算切れで探索を打ち切った（「解なし」とは断定できない） */
+  truncated: boolean;
 }
 
 /** 式が恒等演算（×1, ÷1, +0, -0）を含むかチェック */
@@ -255,16 +266,36 @@ function hasIdentityOp(n: ExprNode): boolean {
   return hasIdentityOp(n.left) || hasIdentityOp(n.right);
 }
 
-export function solve(numbers: number[], options: SolveOptions): Solution[] {
-  const { target, ops = ALL_OPS, maxSolutions = 500, integerOnly = false } = options;
+/**
+ * 全解（上限 maxSolutions 件）を探す。
+ * budget を使い切った場合は truncated=true を返すので、
+ * 「解なし」の判定に使うときは truncated を必ず確認すること。
+ */
+export function solveWithMeta(numbers: number[], options: SolveOptions): SolveResult {
+  const {
+    target,
+    ops = ALL_OPS,
+    maxSolutions = 500,
+    integerOnly = false,
+    budget = 4_000_000,
+  } = options;
   const targetRat = ratFromNumber(target);
   const allResults: { formula: string; key: string; hasIdent: boolean }[] = [];
   const seenFormula = new Set<string>();
   const opSet = new Set(ops);
-  let budget = 4_000_000;
+  let budgetLeft = budget;
+  let truncated = false;
+
+  const outOfBudget = () => {
+    if (budgetLeft <= 0) {
+      truncated = true;
+      return true;
+    }
+    return false;
+  };
 
   const rec = (nodes: ExprNode[]) => {
-    if (allResults.length >= maxSolutions * 3 || budget <= 0) return;
+    if (allResults.length >= maxSolutions * 3 || outOfBudget()) return;
     if (nodes.length === 1) {
       const n = nodes[0];
       if (ratEq(n.rat, targetRat)) {
@@ -284,7 +315,7 @@ export function solve(numbers: number[], options: SolveOptions): Solution[] {
         for (let k = 0; k < nodes.length; k++) if (k !== i && k !== j) rest.push(nodes[k]);
 
         const tryNode = (node: ExprNode) => {
-          budget--;
+          budgetLeft--;
           if (integerOnly && node.rat.d !== 1) return;
           rest.push(node);
           rec(rest);
@@ -301,7 +332,7 @@ export function solve(numbers: number[], options: SolveOptions): Solution[] {
           if (Math.abs(b.val) > EPS) tryNode(makeOpNode('/', a, b));
           if (Math.abs(a.val) > EPS) tryNode(makeOpNode('/', b, a));
         }
-        if (allResults.length >= maxSolutions * 3 || budget <= 0) return;
+        if (allResults.length >= maxSolutions * 3 || outOfBudget()) return;
       }
     }
   };
@@ -324,7 +355,11 @@ export function solve(numbers: number[], options: SolveOptions): Solution[] {
     if (results.length >= maxSolutions) break;
     results.push({ formula: r.formula, key: r.key });
   }
-  return results;
+  return { solutions: results, truncated };
+}
+
+export function solve(numbers: number[], options: SolveOptions): Solution[] {
+  return solveWithMeta(numbers, options).solutions;
 }
 
 export function hasSolution(numbers: number[], options: SolveOptions): boolean {
