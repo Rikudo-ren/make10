@@ -210,6 +210,14 @@ export function ChatDock({ ctrl }: { ctrl: UseRoom }) {
   const [open, setOpen] = useState(false);
   const messages = useChatMessages(ctrl);
   const [seenCount, setSeenCount] = useState(0);
+  const lastRoomRef = useRef<string | null>(null);
+
+  // ルームが変わったら既存ログは既読扱い（未読バッジを付けない）
+  useEffect(() => {
+    if (lastRoomRef.current === ctrl.roomId) return;
+    lastRoomRef.current = ctrl.roomId;
+    setSeenCount(messages.length);
+  }, [ctrl.roomId, messages.length]);
 
   // 開いている間は常に既読扱い
   useEffect(() => {

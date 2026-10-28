@@ -269,7 +269,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
         </div>
       )}
 
-      <div className="grid gap-3.5 lg:grid-cols-[1fr_286px]">
+      <div className="grid gap-3.5 lg:grid-cols-[1fr_268px]">
         <Card className="relative overflow-hidden p-4 sm:p-5">
           {/* 定員ステータスバー */}
           {!judging && (
@@ -413,6 +413,9 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                 )}
               </div>
             )}
+            <p className="jp mt-2.5 border-t border-white/8 pt-2 text-[9px] leading-relaxed text-slate-500">
+              コメントは左下の COMMS ボタンからログで読み返せます
+            </p>
           </Card>
 
         </div>
