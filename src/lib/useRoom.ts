@@ -26,6 +26,7 @@ import {
 } from './roomCleanup';
 import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } from './types';
 import { assignTeams, clampTeamCount, isValidTeamId, pickJoinTeamId } from './teams';
+import { generateFactorPuzzle } from './factor';
 
 export { EMPTY_ROOM_GRACE_MS, ROOM_TTL_MS, SWEEP_INTERVAL_MS } from './roomCleanup';
 
@@ -740,16 +741,54 @@ export function useRoom() {
       setGenProgress({ attempts: 0, elapsedMs: 0, deadlineMs: GENERATE_DEADLINE_MS });
       try {
         await set(ref(db, `rooms/${code}/preparingAt`), serverTimestamp());
-        const puzzle = await generatePuzzleAsync(settings, {
-          deadlineMs: GENERATE_DEADLINE_MS,
-          avoid,
-          onProgress: (p) => setGenProgress(p),
-        });
-        if (!puzzle) {
-          setError(
-            'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値を見直してください（ラウンドは開始していません）。',
-          );
-          return;
+        // ゲーム種別で出題を分岐する（同じ部屋・同じ進行管理のまま中身だけ変える）
+        let roundFields: Record<string, unknown>;
+        if (settings.gameMode === 'factor') {
+          const fp = generateFactorPuzzle({
+            digits: settings.factorDigits,
+            minPrime: settings.factorMinPrime,
+            maxPrime: settings.factorMaxPrime,
+            countMin: settings.factorCountMin,
+            countMax: settings.factorCountMax,
+          });
+          if (!fp) {
+            setError(
+              'この設定では条件に合う合成数を作れませんでした。桁数・下限素数・上限素数・素因数の個数を見直してください（ラウンドは開始していません）。',
+            );
+            return;
+          }
+          roundFields = {
+            gameMode: 'factor',
+            numbers: [fp.value],
+            target: fp.value,
+            factorNumber: fp.value,
+            factorAnswer: fp.factors,
+            solutions: [],
+            solutionCount: 1,
+            difficultyLabel: settings.showDifficulty ? `素因数 ${fp.factors.length}個` : null,
+          };
+        } else {
+          const puzzle = await generatePuzzleAsync(settings, {
+            deadlineMs: GENERATE_DEADLINE_MS,
+            avoid,
+            onProgress: (p) => setGenProgress(p),
+          });
+          if (!puzzle) {
+            setError(
+              'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値を見直してください（ラウンドは開始していません）。',
+            );
+            return;
+          }
+          roundFields = {
+            gameMode: 'make10',
+            numbers: puzzle.numbers,
+            target: puzzle.target,
+            factorNumber: null,
+            factorAnswer: null,
+            solutions: puzzle.solutions,
+            solutionCount: puzzle.solutionCount,
+            difficultyLabel: settings.showDifficulty ? puzzle.difficultyLabel : null,
+          };
         }
         // status と currentRound を同時更新し、問題切り替え時のチラ見えを防ぐ。
         // startedAt がサーバー時刻に解決されるまでクライアント側でカウントダウンマスクをかける。
@@ -759,16 +798,12 @@ export function useRoom() {
           currentRound: {
             roundIndex: globalIndex,
             matchStartIndex,
-            numbers: puzzle.numbers,
-            target: puzzle.target,
             startedAt: serverTimestamp(),
             winnerUid: null,
             outcome: null,
             results: null,
             endedAt: null,
-            solutions: puzzle.solutions,
-            solutionCount: puzzle.solutionCount,
-            difficultyLabel: settings.showDifficulty ? puzzle.difficultyLabel : null,
+            ...roundFields,
           },
         });
       } catch (e: any) {

@@ -1,6 +1,7 @@
 import type { Op } from '../lib/solver';
 import type { Settings } from '../lib/types';
 import { Chip, Field, Toggle, inputCls } from './ui';
+import { FACTOR_PRIME_OPTIONS } from '../lib/factor';
 
 interface Props {
   settings: Settings;
@@ -22,6 +23,127 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* ===== ゲームの種類（同じ部屋のまま切替できる） ===== */}
+      <div className="border border-white/10 bg-black/25 p-3">
+        <div className="label jp mb-2 tracking-[.18em] text-cyan-200/70">ゲームの種類</div>
+        <div className="flex flex-wrap gap-2">
+          <Chip
+            disabled={dis}
+            active={s.gameMode === 'make10'}
+            onClick={() => onChange({ gameMode: 'make10' })}
+          >
+            メイクテン
+          </Chip>
+          <Chip
+            disabled={dis}
+            active={s.gameMode === 'factor'}
+            onClick={() => onChange({ gameMode: 'factor' })}
+          >
+            素因数分解
+          </Chip>
+        </div>
+        {s.gameMode === 'factor' && (
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <Field label="分解する数の桁数">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.factorDigits}
+                  onChange={(e) => onChange({ factorDigits: Number(e.target.value) })}
+                >
+                  {[2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n}桁
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="下限素数（素因数の最小）">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.factorMinPrime}
+                  onChange={(e) =>
+                    onChange({
+                      factorMinPrime: Number(e.target.value),
+                      factorMaxPrime: Math.max(Number(e.target.value), s.factorMaxPrime),
+                    })
+                  }
+                >
+                  {FACTOR_PRIME_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p} 以上
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="上限素数（素因数の最大）">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.factorMaxPrime}
+                  onChange={(e) =>
+                    onChange({
+                      factorMaxPrime: Math.max(s.factorMinPrime, Number(e.target.value)),
+                    })
+                  }
+                >
+                  {FACTOR_PRIME_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p} 以下
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="素因数の個数（最小）">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.factorCountMin}
+                  onChange={(e) =>
+                    onChange({
+                      factorCountMin: Number(e.target.value),
+                      factorCountMax: Math.max(Number(e.target.value), s.factorCountMax),
+                    })
+                  }
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n}個
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="素因数の個数（最大）">
+                <select
+                  className={inputCls}
+                  disabled={dis}
+                  value={s.factorCountMax}
+                  onChange={(e) =>
+                    onChange({
+                      factorCountMax: Math.max(s.factorCountMin, Number(e.target.value)),
+                    })
+                  }
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n}個
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <p className="jp text-[11px] leading-relaxed text-slate-400">
+              出された合成数を、素数を1つずつ入力（Enter）して割っていく早解きです。
+              素因数は「下限素数〜上限素数」の範囲のものだけが現れ、個数は最小〜最大の範囲で毎回変わります。
+              組み合わせによっては作れない場合があり（例: 5桁・素因数2個・上限5）、
+              そのときは開始時にエラーになるので桁数・下限・上限・個数を見直してください。
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* ===== 対戦形式（個人戦 / チーム戦） ===== */}
       <div className="border border-white/10 bg-black/25 p-3">
         <div className="label jp mb-2 tracking-[.18em] text-cyan-200/70">対戦形式</div>
@@ -110,6 +232,8 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
         )}
       </div>
 
+      {s.gameMode === 'make10' && (
+      <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="数字の個数">
           <select
@@ -189,17 +313,6 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
             </div>
           </Field>
         )}
-        <Field label="ラウンド数">
-          <input
-            type="number"
-            className={inputCls}
-            disabled={dis}
-            min={1}
-            max={50}
-            value={s.roundCount}
-            onChange={(e) => onChange({ roundCount: Number(e.target.value) })}
-          />
-        </Field>
       </div>
 
       <div>
@@ -218,19 +331,26 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
         </div>
       </div>
 
+      </>
+      )}
+
       <div className="grid gap-2 sm:grid-cols-2">
-        <Toggle
-          label="出題数字の重複を許可"
-          disabled={dis}
-          checked={s.allowDuplicateNumbers}
-          onChange={(v) => onChange({ allowDuplicateNumbers: v })}
-        />
-        <Toggle
-          label="途中結果を整数のみに制限"
-          disabled={dis}
-          checked={s.integerOnly}
-          onChange={(v) => onChange({ integerOnly: v })}
-        />
+        {s.gameMode === 'make10' && (
+          <Toggle
+            label="出題数字の重複を許可"
+            disabled={dis}
+            checked={s.allowDuplicateNumbers}
+            onChange={(v) => onChange({ allowDuplicateNumbers: v })}
+          />
+        )}
+        {s.gameMode === 'make10' && (
+          <Toggle
+            label="途中結果を整数のみに制限"
+            disabled={dis}
+            checked={s.integerOnly}
+            onChange={(v) => onChange({ integerOnly: v })}
+          />
+        )}
         <Toggle
           label="制限時間なし（全員パスで次へ）"
           disabled={dis}
@@ -238,7 +358,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
           onChange={(v) => onChange({ unlimitedTime: v })}
         />
         <Toggle
-          label="解の通り数を問題に表示"
+          label={s.gameMode === 'factor' ? '素因数の個数を問題に表示' : '解の通り数を問題に表示'}
           disabled={dis}
           checked={s.showDifficulty}
           onChange={(v) => onChange({ showDifficulty: v })}
@@ -271,6 +391,17 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
             />
           </Field>
         )}
+        <Field label="ラウンド数">
+          <input
+            type="number"
+            className={inputCls}
+            disabled={dis}
+            min={1}
+            max={50}
+            value={s.roundCount}
+            onChange={(e) => onChange({ roundCount: Number(e.target.value) })}
+          />
+        </Field>
         <Field label="得点方式">
           <select
             className={inputCls}

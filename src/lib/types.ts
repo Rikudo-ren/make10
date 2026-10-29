@@ -1,10 +1,24 @@
 import type { Op, Solution } from './solver';
 import type { BattleMode, TeamAssignMode, TeamWinCondition } from './teams';
 import { clampTeamCount } from './teams';
+import type { FactorGameMode } from './factor';
+import { clampFactorCount, clampFactorDigits, snapFactorMaxPrime, snapFactorPrime } from './factor';
 
-export type { BattleMode, TeamAssignMode, TeamWinCondition };
+export type { BattleMode, TeamAssignMode, TeamWinCondition, FactorGameMode };
 
 export interface Settings {
+  /** 遊ぶゲーム: メイクテン 'make10' / 素因数分解 'factor'（同じ部屋のまま切替できる） */
+  gameMode: FactorGameMode;
+  /** 素因数分解: 分解する数の桁数（2〜5） */
+  factorDigits: number;
+  /** 素因数分解: 素因数の下限（この値以上の素数だけが現れる） */
+  factorMinPrime: number;
+  /** 素因数分解: 素因数の上限（この値以下の素数だけが現れる） */
+  factorMaxPrime: number;
+  /** 素因数分解: 素因数の個数（重複込み）の最小 */
+  factorCountMin: number;
+  /** 素因数分解: 素因数の個数（重複込み）の最大 */
+  factorCountMax: number;
   /** 個人戦 'solo' / チーム戦 'team' */
   battleMode: BattleMode;
   /** チーム数（2〜6、チーム戦のみ） */
@@ -37,6 +51,12 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  gameMode: 'make10',
+  factorDigits: 3,
+  factorMinPrime: 2,
+  factorMaxPrime: 13,
+  factorCountMin: 3,
+  factorCountMax: 4,
   battleMode: 'solo',
   teamCount: 2,
   teamAssignMode: 'balanced',
@@ -77,6 +97,12 @@ export interface RoundData {
   roundIndex: number;
   numbers: number[];
   target: number;
+  /** このラウンドのゲーム種別（旧ルームでは未保存なので settings 側で補う） */
+  gameMode?: FactorGameMode;
+  /** 素因数分解: 分解する合成数（= target と同じ値） */
+  factorNumber?: number;
+  /** 素因数分解: 正解の素因数（小さい順） */
+  factorAnswer?: number[];
   startedAt: number;
   endedAt?: number | null;
   winnerUid?: string | null;
@@ -131,9 +157,21 @@ const TEAM_WIN_CONDITIONS: TeamWinCondition[] = [
   'averageScore',
 ];
 
+const GAME_MODES: FactorGameMode[] = ['make10', 'factor'];
+
 export function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   const s = { ...DEFAULT_SETTINGS, ...(raw || {}) };
   // 旧バージョンのルーム（チーム戦フィールドなし）でも個人戦として動くよう既定値で補う
+  if (!GAME_MODES.includes(s.gameMode)) s.gameMode = 'make10';
+  s.factorDigits = clampFactorDigits(s.factorDigits);
+  s.factorMaxPrime = snapFactorMaxPrime(s.factorMaxPrime);
+  // 下限が上限を超えていたら上限に合わせる（生成できる素数が無くならないように）
+  s.factorMinPrime = Math.min(snapFactorPrime(s.factorMinPrime ?? 2, 2), s.factorMaxPrime);
+  s.factorCountMin = clampFactorCount(s.factorCountMin, DEFAULT_SETTINGS.factorCountMin);
+  s.factorCountMax = Math.max(
+    s.factorCountMin,
+    clampFactorCount(s.factorCountMax, DEFAULT_SETTINGS.factorCountMax),
+  );
   if (!BATTLE_MODES.includes(s.battleMode)) s.battleMode = 'solo';
   s.teamCount = clampTeamCount(s.teamCount);
   if (!TEAM_ASSIGN_MODES.includes(s.teamAssignMode)) s.teamAssignMode = 'balanced';
