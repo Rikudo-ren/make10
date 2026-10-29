@@ -99,12 +99,24 @@ function SolutionsList({
 
 const COUNTDOWN_MS = 3000;
 
+/** タイマー表示: 60秒以上は m:ss.d、それ未満は s.d */
+function formatTimer(ms: number): string {
+  const totalSec = Math.max(0, ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec - min * 60;
+  return min > 0 ? `${min}:${sec.toFixed(1).padStart(4, '0')}` : sec.toFixed(1);
+}
+
 export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const { room, players, uid, isGM } = ctrl;
   const [tick, setTick] = useState(0);
   const [confirmForcePass, setConfirmForcePass] = useState(false);
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [gmBusy, setGmBusy] = useState(false);
+  const [autoNextLeftMs, setAutoNextLeftMs] = useState<number | null>(null);
+  const autoNextDeadlineRef = useRef<number | null>(null);
+  const nextRoundRef = useRef(ctrl.nextRound);
+  nextRoundRef.current = ctrl.nextRound;
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 100);
     return () => clearInterval(id);
@@ -138,11 +150,11 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
       frozenElapsedRef.current = Math.max(0, elapsedMs - COUNTDOWN_MS);
     }
   }, [myAnswer, elapsedMs]);
-  const displayElapsed = frozenElapsedRef.current ?? Math.max(0, elapsedMs - COUNTDOWN_MS);
-
+  // 全員共通の経過時間（自分が先に正解しても止まらず、ラウンド終了まで数え続ける）
+  const liveElapsed = Math.max(0, elapsedMs - COUNTDOWN_MS);
   const remainMs = settings.unlimitedTime
     ? null
-    : Math.max(0, settings.timeLimitSec * 1000 - displayElapsed);
+    : Math.max(0, settings.timeLimitSec * 1000 - liveElapsed);
   const timeFrac = remainMs === null ? null : remainMs / (settings.timeLimitSec * 1000);
 
   // カウントダウンの SE（3・2・1 → GO）
@@ -155,6 +167,27 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
     if (wasCountdownRef.current && !isCountdown) playSe('go');
     wasCountdownRef.current = isCountdown;
   }, [isCountdown]);
+
+  // 自動で次の問題へ（設定ON時、結果画面で10秒数えてから進める。進めるのはGMの端末）
+  useEffect(() => {
+    if (!judging || !settings.autoNextRound || confirmAbort) {
+      autoNextDeadlineRef.current = null;
+      setAutoNextLeftMs(null);
+      return;
+    }
+    if (autoNextDeadlineRef.current === null) {
+      autoNextDeadlineRef.current = Date.now() + 10_000;
+    }
+    const id = setInterval(() => {
+      const left = Math.max(0, (autoNextDeadlineRef.current ?? 0) - Date.now());
+      setAutoNextLeftMs(left);
+      if (left <= 0) {
+        autoNextDeadlineRef.current = null;
+        if (isGM) void nextRoundRef.current();
+      }
+    }, 200);
+    return () => clearInterval(id);
+  }, [judging, settings.autoNextRound, confirmAbort, isGM, r?.roundIndex]);
 
   // ラウンド確定時のお知らせ音
   const prevJudgingRef = useRef<string>('');
@@ -203,6 +236,11 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const myLiveIndex = uid ? liveCorrectAnswers.findIndex(([id]) => id === uid) : -1;
   const iAmSolved = myLiveIndex >= 0;
   const myLiveRank = myLiveIndex >= 0 ? myLiveIndex + 1 : null;
+  const myRecordMs = iAmSolved
+    ? typeof myAnswer?.adjustedElapsedMs === 'number'
+      ? myAnswer.adjustedElapsedMs
+      : frozenElapsedRef.current
+    : null;
 
   const playerNamesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -313,19 +351,38 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end">
-            <span className="label text-[9px] text-slate-500">
-              {settings.unlimitedTime ? 'ELAPSED' : 'TIME LEFT'}
-            </span>
-            <span
-              className={cn(
-                'num text-[28px] leading-none font-black',
-                remainMs !== null && remainMs < 10000 ? 'text-rose-300' : 'text-white',
-              )}
-              style={{ textShadow: '0 0 20px rgba(34,224,255,.3)' }}
-            >
-              {showMask ? '—' : ((remainMs ?? displayElapsed) / 1000).toFixed(1)}
-            </span>
+          <div className="flex items-stretch overflow-hidden border border-cyan-300/25 bg-black/35">
+            <div className="flex min-w-[92px] flex-col items-center px-3 py-1.5">
+              <span className="label jp text-[8px] text-slate-400">
+                {settings.unlimitedTime ? '経過時間' : '残り時間'}
+              </span>
+              <span
+                className={cn(
+                  'num text-[22px] leading-none font-black tabular-nums',
+                  remainMs !== null && remainMs < 10000 ? 'text-rose-300' : 'text-white',
+                )}
+                style={{ textShadow: '0 0 20px rgba(34,224,255,.3)' }}
+              >
+                {showMask ? '—' : formatTimer(remainMs ?? liveElapsed)}
+              </span>
+            </div>
+            <div className="flex min-w-[92px] flex-col items-center border-l border-white/10 px-3 py-1.5">
+              <span className="label jp text-[8px] text-slate-400">
+                {myRecordMs !== null
+                  ? settings.unlimitedTime
+                    ? '自分の記録'
+                    : '自分の正解時間'
+                  : '自分のタイマー'}
+              </span>
+              <span
+                className={cn(
+                  'num text-[22px] leading-none font-black tabular-nums',
+                  myRecordMs !== null ? 'text-emerald-300' : 'text-cyan-100',
+                )}
+              >
+                {showMask ? '—' : formatTimer(myRecordMs ?? liveElapsed)}
+              </span>
+            </div>
           </div>
           <div className="flex flex-col items-center border border-solar/40 bg-solar/8 px-3 py-1">
             <span className="label text-[8px] text-amber-200/70">{isFactor ? '分解する数' : 'TARGET'}</span>
@@ -807,6 +864,12 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               )}
             </div>
 
+            {settings.autoNextRound && autoNextLeftMs !== null && (
+              <div className="jp mt-5 text-center text-[11px] font-bold text-cyan-200">
+                {roundNo >= settings.roundCount ? '最終結果' : '次の問題'}まで あと{' '}
+                {(autoNextLeftMs / 1000).toFixed(1)} 秒（自動で進みます）
+              </div>
+            )}
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               {isGM ? (
                 <>
