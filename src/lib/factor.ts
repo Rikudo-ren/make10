@@ -37,7 +37,8 @@ export function snapFactorMaxPrime(n: unknown): number {
 export function clampFactorDigits(n: unknown): number {
   const v = Math.floor(Number(n));
   if (!Number.isFinite(v)) return 3;
-  return Math.min(8, Math.max(2, v));
+  // 16桁以上は整数を正確に表せず積の一致判定が壊れるため、15桁を上限とする
+  return Math.min(15, Math.max(2, v));
 }
 
 export function clampFactorCount(n: unknown, fallback = 3): number {
@@ -147,7 +148,7 @@ export interface FactorPuzzle {
 }
 
 export interface FactorGenOptions {
-  /** 合成数の桁数（0以下は「指定なし」= 2〜8桁のどれか） */
+  /** 合成数の桁数（0以下は「指定なし」= 2〜15桁のどれか） */
   digits: number;
   /** 素因数の下限（この値以上の素数だけを使う） */
   minPrime?: number;
@@ -162,7 +163,7 @@ export interface FactorGenOptions {
 
 /**
  * 設定値を生成で使う実効条件へそろえる。
- * 「指定なし」は、桁数なら2〜8桁、素因数の個数なら2〜10個の範囲として扱い、
+ * 「指定なし」は、桁数なら2〜15桁、素因数の個数なら2〜10個の範囲として扱い、
  * 指定されている側の条件に合う問題だけが出るようにする。
  */
 function effectiveFactorConstraints(opts: FactorGenOptions) {
@@ -172,7 +173,7 @@ function effectiveFactorConstraints(opts: FactorGenOptions) {
   const anyDigits = Number.isFinite(rawDigits) && rawDigits <= 0;
   const digits = anyDigits ? 0 : clampFactorDigits(rawDigits);
   const lo = anyDigits ? 10 : 10 ** (digits - 1);
-  const hi = anyDigits ? 99_999_999 : 10 ** digits - 1;
+  const hi = anyDigits ? 10 ** 15 - 1 : 10 ** digits - 1;
   const rawCountMin = Math.floor(Number(opts.countMin));
   const anyCount = !Number.isFinite(rawCountMin) || rawCountMin <= 0;
   const countMin = anyCount ? 2 : clampFactorCount(rawCountMin, 2);
@@ -195,7 +196,7 @@ export function factorGenerationIssue(opts: FactorGenOptions): string | null {
   const smallestProduct = c.minPrime ** c.countMin;
   if (smallestProduct > c.hi) {
     return c.anyDigits
-      ? `素因数を${c.countMin}個以上掛けると、最小の素数${c.minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、扱える上限の8桁を超えます`
+      ? `素因数を${c.countMin}個以上掛けると、最小の素数${c.minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、扱える上限の15桁を超えます`
       : `素因数を${c.countMin}個以上掛けると、最小の素数${c.minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、${c.digits}桁を超えます`;
   }
   const largestProduct = c.maxPrime ** c.countMax;

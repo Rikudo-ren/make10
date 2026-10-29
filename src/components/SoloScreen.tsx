@@ -245,7 +245,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                   }
                 >
                   <option value={0}>指定なし</option>
-                  {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                  {Array.from({ length: 14 }, (_, i) => i + 2).map((n) => (
                     <option key={n} value={n}>
                       {n}桁
                     </option>

@@ -11,7 +11,7 @@ export interface Settings {
   gameMode: FactorGameMode;
   /** 素因数分解: 進め方 'accumulate' 積み上げ式 / 'divide' 割り算式（目標が割れていく） */
   factorStyle: FactorStyle;
-  /** 素因数分解: 分解する数の桁数（2〜8、0=指定なし） */
+  /** 素因数分解: 分解する数の桁数（2〜15、0=指定なし） */
   factorDigits: number;
   /** 素因数分解: 素因数の下限（この値以上の素数だけが現れる） */
   factorMinPrime: number;
