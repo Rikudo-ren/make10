@@ -51,14 +51,14 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
                   active={s.factorStyle === 'accumulate'}
                   onClick={() => onChange({ factorStyle: 'accumulate' })}
                 >
-                  積み上げ式（残りが見えない）
+                  残りが見えない
                 </Chip>
                 <Chip
                   disabled={dis}
                   active={s.factorStyle === 'divide'}
                   onClick={() => onChange({ factorStyle: 'divide' })}
                 >
-                  割り算式（目標が割れていく）
+                  割り算（目標が割れていく）
                 </Chip>
               </div>
             </Field>
@@ -154,7 +154,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
             </div>
             <p className="jp text-[11px] leading-relaxed text-slate-400">
               出された合成数に素数を1つずつ入力（Enter）して素因数分解する早解きです。
-              積み上げ式は積だけが見えて残りが分からない難しめ、割り算式は目標が割れていく易しめの進め方です。
+              「残りが見えない」は式の合計だけが見える難しめ、「割り算」は目標が割れていく易しめの進め方です。
               素因数は「下限素数〜上限素数」の範囲のものだけが現れ、個数は最小〜最大の範囲で毎回変わります。
               下限・上限は2〜997のすべての素数（3桁の素数まで）から選べます。
               組み合わせによっては作れない場合があり（例: 5桁・素因数2個・上限5）、

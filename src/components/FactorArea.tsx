@@ -17,7 +17,7 @@ import {
 interface Props {
   /** 分解する合成数 */
   value: number;
-  /** 進め方: 'accumulate' 積み上げ式 / 'divide' 割り算式（目標が割れていく） */
+  /** 進め方: 'accumulate' 残りが見えない / 'divide' 割り算（目標が割れていく） */
   factorStyle?: FactorStyle;
   disabled?: boolean;
   disabledReason?: string;
@@ -190,7 +190,7 @@ export function FactorArea({
       return;
     }
 
-    // 積み上げ式: 素数なら必ず積む（オーバーは赤表示で知らせる）
+    // 残りが見えない進め方: 素数なら必ず式に加える（オーバーは赤表示で知らせる）
     const result = checkFactorStep({ target: value, currentProduct: product, value: parsed });
     if (!result.ok) {
       failStep(result.reason);
@@ -216,7 +216,7 @@ export function FactorArea({
     setError(null);
   };
 
-  /** ⌫ボタン: 入力中なら1文字消し、入力が空なら直近に積んだ素数を1つ消す */
+  /** ×ボタン: 入力中なら1文字消し、入力が空なら直近の素数を1つ消す */
   const backspace = () => {
     if (locked || solvedRef.current) return;
     if (input !== '') {
@@ -241,12 +241,12 @@ export function FactorArea({
 
   return (
     <div className="flex flex-col gap-3.5">
-      {/* 目標の数を大きく中央に表示し、その下に積み上げた式を出す（残りは出さない） */}
+      {/* 目標の数を大きく中央に表示し、その下に式を出す（残りは出さない） */}
       <div className="hud-corner relative overflow-hidden border border-cyan-300/25 bg-gradient-to-b from-cyan-950/40 to-black/60 px-4 py-4 sm:px-5">
         <div className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-fuchsia-500/15 blur-2xl" />
         <div className="relative text-center">
           <div className="label flex items-center justify-center gap-1.5 text-cyan-300/60">
-            <span className="text-cyan-300/80">›</span> FACTORIZE // {isDivide ? '割り算' : '積み上げ'}
+            <span className="text-cyan-300/80">›</span> {isDivide ? 'FACTORIZE // 割り算' : 'FACTORIZE'}
           </div>
           <div className="label mt-2.5 text-[10px] tracking-[.35em] text-amber-200/70">
             {isDivide ? '残りの数' : '分解する数'}
@@ -268,7 +268,7 @@ export function FactorArea({
             <span className="jp text-[12px] text-slate-500">
               {isDivide
                 ? 'まだ割っていません（素数を入力して Enter）'
-                : 'まだ何も積んでいません（素数を入力して Enter）'}
+                : 'まだ入力していません（素数を入力して Enter）'}
             </span>
           ) : (
             <span className="num flex flex-wrap items-center justify-center gap-1.5 text-[20px] font-black sm:text-[24px]">
@@ -343,12 +343,12 @@ export function FactorArea({
             disabled={locked || normalizeInput(input) === ''}
             className="btn btn-primary shrink-0 px-5 text-[12px] disabled:opacity-30"
           >
-            積む ↵
+            Enter
           </button>
         </div>
       </form>
 
-      {/* 画面キーパッド（0〜9＋⌫）。101などの3桁素数も打てるよう0も含む */}
+      {/* 画面キーパッド（×・0〜9・Enter）。101などの3桁素数も打てるよう0も含む */}
       <div className="grid grid-cols-3 gap-2">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
           <button
@@ -363,21 +363,29 @@ export function FactorArea({
         ))}
         <button
           type="button"
-          disabled={locked}
-          onClick={() => pressDigit('0')}
-          className="num col-span-2 border border-cyan-300/25 bg-cyan-400/10 py-3 text-[18px] font-black text-cyan-100 transition hover:bg-cyan-400/20 active:scale-95 disabled:opacity-30"
-        >
-          0
-        </button>
-        <button
-          type="button"
           disabled={locked || (input === '' && factors.length === 0)}
           onClick={backspace}
           aria-label="1文字消す（入力が空のときは直近の素数を1つ消す）"
           title="1文字消す（入力が空のときは直近の素数を1つ消す）"
           className="num border border-white/20 bg-white/5 py-3 text-[18px] font-black text-slate-200 transition hover:bg-white/10 active:scale-95 disabled:opacity-30"
         >
-          ⌫
+          ×
+        </button>
+        <button
+          type="button"
+          disabled={locked}
+          onClick={() => pressDigit('0')}
+          className="num border border-cyan-300/25 bg-cyan-400/10 py-3 text-[18px] font-black text-cyan-100 transition hover:bg-cyan-400/20 active:scale-95 disabled:opacity-30"
+        >
+          0
+        </button>
+        <button
+          type="button"
+          disabled={locked || normalizeInput(input) === ''}
+          onClick={submit}
+          className="num border border-emerald-300/40 bg-emerald-400/15 py-3 text-[15px] font-black text-emerald-100 transition hover:bg-emerald-400/25 active:scale-95 disabled:opacity-30"
+        >
+          Enter
         </button>
       </div>
 
@@ -390,14 +398,14 @@ export function FactorArea({
         <p className="jp text-[11px] font-bold text-rose-300">{error}</p>
       ) : over ? (
         <p className="jp text-[11px] font-bold text-rose-300">
-          積が目標の {value.toLocaleString()}{' '}
-          を超えています。Backspaceで直近の素数を1つ消すか、「最初から」で全リセットしてください。
+          目標の {value.toLocaleString()}{' '}
+          を超えています。×（Backspace）で直近の素数を1つ消すか、「最初から」で全リセットしてください。
         </p>
       ) : (
         <p className="jp text-[11px] text-slate-500">
           {isDivide
-            ? '素数を Enter するたびに残りの数が割れていきます。残りの数を割り切れない素数は入りません。Backspace（⌫）で直近の素数を1つ戻せます。同じ素数を何度も使ってOK。'
-            : '素数を Enter するたびに積へ積み上がります（例: 目標360なら 2↵ 2↵ 2↵ 3↵ 3↵ 5↵ で 2×2×2×3×3×5=360）。積が目標を超えたら赤く表示されます。Backspace（⌫）で直近の素数を1つ消せます。同じ素数を何度も使ってOK。'}
+            ? '素数を Enter するたびに残りの数が割れていきます。残りの数を割り切れない素数は入りません。×（Backspace）で直近の素数を1つ戻せます。同じ素数を何度も使ってOK。'
+            : '素数を入力して Enter を押すと式に加わります（例: 目標360なら 2 Enter、2 Enter、2 Enter、3 Enter、3 Enter、5 Enter で 2×2×2×3×3×5=360）。目標を超えたら赤く表示されます。×（Backspace）で直近の素数を1つ消せます。同じ素数を何度も使ってOK。'}
         </p>
       )}
 
@@ -409,7 +417,7 @@ export function FactorArea({
           disabled={locked || factors.length === 0}
           className="gap-1.5 px-3 py-2.5 text-[10px]"
         >
-          <IconUndo size={13} /> 1つ戻す（⌫）
+          <IconUndo size={13} /> 1つ戻す（×）
         </Button>
         <div className="grow" />
         <Button
@@ -453,7 +461,7 @@ export function FactorArea({
             )}
             <span className="jp text-[11px] leading-relaxed text-slate-500">
               {passed
-                ? 'パス中でも積み上げできます（入力すると取り消し）'
+                ? 'パス中でも入力できます（入力すると取り消し）'
                 : '解けないときはパス（押しただけでは解答権は失われません）'}
             </span>
           </div>
