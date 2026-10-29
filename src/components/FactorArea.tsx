@@ -4,16 +4,21 @@ import { IconCheck, IconLock, IconReset, IconSkip, IconUndo } from './icons';
 import { playSe } from '../lib/audio';
 import { cn } from '../utils/cn';
 import {
+  checkFactorDivideStep,
   checkFactorStep,
   FACTOR_GUESS_ERROR_TEXT,
   factorFormula,
   factorKey,
   productOf,
+  type FactorGuessError,
+  type FactorStyle,
 } from '../lib/factor';
 
 interface Props {
   /** 分解する合成数 */
   value: number;
+  /** 進め方: 'accumulate' 積み上げ式 / 'divide' 割り算式（目標が割れていく） */
+  factorStyle?: FactorStyle;
   disabled?: boolean;
   disabledReason?: string;
   penaltyMode: 'none' | 'lock';
@@ -40,6 +45,7 @@ function normalizeInput(raw: string): string {
  */
 export function FactorArea({
   value,
+  factorStyle = 'accumulate',
   disabled,
   disabledReason,
   penaltyMode,
@@ -52,6 +58,9 @@ export function FactorArea({
 }: Props) {
   const [factors, setFactors] = useState<number[]>([]);
   const product = productOf(factors);
+  const isDivide = factorStyle === 'divide';
+  /** 割り算式での残りの数（割り切れる素数だけが積まれるので常に割り切れる） */
+  const remaining = isDivide ? value / product : value;
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(0);
@@ -80,7 +89,7 @@ export function FactorArea({
     if (!passed) resumeRequestedRef.current = false;
   }, [passed]);
 
-  const over = product > value;
+  const over = !isDivide && product > value;
   const lockRemain = Math.max(0, lockUntil - now);
   const locked = !!disabled || !!isCountdown || lockRemain > 0;
   const canRequestPass = !!onPass && !passed && !disabled && !isCountdown;
@@ -103,28 +112,51 @@ export function FactorArea({
     if (locked || solvedRef.current) return;
     const text = normalizeInput(input);
     const parsed = text === '' ? NaN : Number(text);
-    const result = checkFactorStep({ target: value, currentProduct: product, value: parsed });
-    if (!result.ok) {
+
+    const failStep = (reason: FactorGuessError) => {
       fail(
-        result.reason === 'not-prime'
-          ? `${text || 'その数'}は素数ではありません（まだ割れる数です）`
-          : FACTOR_GUESS_ERROR_TEXT[result.reason],
+        reason === 'not-prime'
+          ? `${text || 'その数'} は素数ではありません。素数を入力してください`
+          : reason === 'not-a-factor'
+            ? `${parsed} は ${remaining.toLocaleString()} に含まれる素因数ではありません`
+            : FACTOR_GUESS_ERROR_TEXT[reason],
       );
+    };
+
+    const stackPrime = (v: number, solved: boolean) => {
+      resumeIfPassed();
+      const nextFactors = [...factors, v];
+      setFactors(nextFactors);
+      setInput('');
+      setError(null);
+      inputRef.current?.focus();
+      if (solved) {
+        solvedRef.current = true;
+        playSe('correct');
+        onSolved(factorFormula(nextFactors), factorKey(nextFactors));
+      } else {
+        playSe('calc');
+      }
+    };
+
+    if (isDivide) {
+      // 割り算式: 残りを割り切れる素数だけが入り、残りが1になったら完了
+      const result = checkFactorDivideStep({ remaining, value: parsed });
+      if (!result.ok) {
+        failStep(result.reason);
+        return;
+      }
+      stackPrime(result.value, result.nextRemaining === 1);
       return;
     }
-    resumeIfPassed();
-    const nextFactors = [...factors, result.value];
-    setFactors(nextFactors);
-    setInput('');
-    setError(null);
-    inputRef.current?.focus();
-    if (result.nextProduct === value) {
-      solvedRef.current = true;
-      playSe('correct');
-      onSolved(factorFormula(nextFactors), factorKey(nextFactors));
-    } else {
-      playSe('calc');
+
+    // 積み上げ式: 素数なら必ず積む（オーバーは赤表示で知らせる）
+    const result = checkFactorStep({ target: value, currentProduct: product, value: parsed });
+    if (!result.ok) {
+      failStep(result.reason);
+      return;
     }
+    stackPrime(result.value, result.nextProduct === value);
   };
 
   const undo = () => {
@@ -134,6 +166,27 @@ export function FactorArea({
     setError(null);
     playSe('ui');
     inputRef.current?.focus();
+  };
+
+  /** 画面キーパッド: 数字を1文字足す */
+  const pressDigit = (d: string) => {
+    if (locked || solvedRef.current) return;
+    resumeIfPassed();
+    setInput((prev) => normalizeInput(prev + d).slice(0, 10));
+    setError(null);
+  };
+
+  /** ⌫ボタン: 入力中なら1文字消し、入力が空なら直近に積んだ素数を1つ消す */
+  const backspace = () => {
+    if (locked || solvedRef.current) return;
+    if (input !== '') {
+      resumeIfPassed();
+      setInput(input.slice(0, -1));
+      setError(null);
+      playSe('ui');
+    } else {
+      undo();
+    }
   };
 
   const reset = () => {
@@ -154,17 +207,26 @@ export function FactorArea({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="label mb-1 flex items-center gap-1.5 text-cyan-300/60">
-              <span className="text-cyan-300/80">›</span> FACTORIZE // 積み上げ
+              <span className="text-cyan-300/80">›</span> FACTORIZE // {isDivide ? '割り算' : '積み上げ'}
             </div>
             <div className="jp text-[11px] text-slate-400">
-              素数を1つずつ掛けて、目標の数とぴったり一致させよう
+              {isDivide
+                ? '目標の数を素数で割っていって、残りの数を1にしよう'
+                : '素数を1つずつ掛けて、目標の数とぴったり一致させよう'}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-center border border-solar/40 bg-solar/8 px-3.5 py-1.5">
-            <span className="label text-[8px] text-amber-200/70">目標の数</span>
-            <span className="num text-[26px] leading-none font-black text-amber-300">
-              {isCountdown ? '？？？' : value.toLocaleString()}
+            <span className="label text-[8px] text-amber-200/70">
+              {isDivide ? '残りの数' : '目標の数'}
             </span>
+            <span className="num text-[26px] leading-none font-black text-amber-300">
+              {isCountdown ? '？？？' : (isDivide ? remaining : value).toLocaleString()}
+            </span>
+            {isDivide && !isCountdown && (
+              <span className="jp mt-1 text-[9px] text-amber-200/60">
+                目標 {value.toLocaleString()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -173,7 +235,9 @@ export function FactorArea({
             <span className="jp text-[12px] text-slate-500">カウントダウン中…</span>
           ) : factors.length === 0 ? (
             <span className="jp text-[12px] text-slate-500">
-              まだ何も積んでいません（素数を入力して Enter）
+              {isDivide
+                ? 'まだ割っていません（素数を入力して Enter）'
+                : 'まだ何も積んでいません（素数を入力して Enter）'}
             </span>
           ) : (
             <span className="num flex flex-wrap items-center gap-1.5 text-[18px] font-black sm:text-[20px]">
@@ -185,18 +249,31 @@ export function FactorArea({
                   </span>
                 </span>
               ))}
-              <span className="text-slate-400">=</span>
-              <span
-                className={
-                  over ? 'text-rose-400' : product === value ? 'text-emerald-300' : 'text-white'
-                }
-              >
-                {product.toLocaleString()}
-              </span>
-              {over && (
-                <span className="jp animate-pulse text-[11px] font-black text-rose-400">
-                  目標オーバー
-                </span>
+              {isDivide ? (
+                remaining > 1 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-fuchsia-300">×</span>
+                    <span className="border border-dashed border-amber-300/60 bg-amber-400/10 px-2 py-0.5 text-amber-200">
+                      {remaining.toLocaleString()}
+                    </span>
+                  </span>
+                )
+              ) : (
+                <>
+                  <span className="text-slate-400">=</span>
+                  <span
+                    className={
+                      over ? 'text-rose-400' : product === value ? 'text-emerald-300' : 'text-white'
+                    }
+                  >
+                    {product.toLocaleString()}
+                  </span>
+                  {over && (
+                    <span className="jp animate-pulse text-[11px] font-black text-rose-400">
+                      目標オーバー
+                    </span>
+                  )}
+                </>
               )}
             </span>
           )}
@@ -239,6 +316,32 @@ export function FactorArea({
           </button>
         </div>
       </form>
+
+      {/* 画面キーパッド（1〜9＋⌫）。⌫は入力中=1文字消し、空のとき=直近の素数を1つ消す */}
+      <div className="grid grid-cols-5 gap-2">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+          <button
+            key={d}
+            type="button"
+            disabled={locked}
+            onClick={() => pressDigit(d)}
+            className="num border border-cyan-300/25 bg-cyan-400/10 py-3 text-[18px] font-black text-cyan-100 transition hover:bg-cyan-400/20 active:scale-95 disabled:opacity-30"
+          >
+            {d}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={locked || (input === '' && factors.length === 0)}
+          onClick={backspace}
+          aria-label="1文字消す（入力が空のときは直近の素数を1つ消す）"
+          title="1文字消す（入力が空のときは直近の素数を1つ消す）"
+          className="num border border-white/20 bg-white/5 py-3 text-[18px] font-black text-slate-200 transition hover:bg-white/10 active:scale-95 disabled:opacity-30"
+        >
+          ⌫
+        </button>
+      </div>
+
       {lockRemain > 0 ? (
         <p className="jp flex items-center gap-1.5 text-[11px] font-bold text-rose-300">
           <IconLock size={12} />
@@ -253,8 +356,9 @@ export function FactorArea({
         </p>
       ) : (
         <p className="jp text-[11px] text-slate-500">
-          素数を Enter するたびに積へ積み上がります（例: 目標360なら 2↵ 2↵ 2↵ 3↵ 3↵ 5↵ で 2×2×2×3×3×5=360）。
-          積が目標を超えたら赤く表示されます。Backspace（または「1つ戻す」）で直近の素数を1つ消せます。同じ素数を何度も使ってOK。
+          {isDivide
+            ? '素数を Enter するたびに残りの数が割れていきます。残りの数を割り切れない素数は入りません。Backspace（⌫）で直近の素数を1つ戻せます。同じ素数を何度も使ってOK。'
+            : '素数を Enter するたびに積へ積み上がります（例: 目標360なら 2↵ 2↵ 2↵ 3↵ 3↵ 5↵ で 2×2×2×3×3×5=360）。積が目標を超えたら赤く表示されます。Backspace（⌫）で直近の素数を1つ消せます。同じ素数を何度も使ってOK。'}
         </p>
       )}
 

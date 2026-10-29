@@ -1,15 +1,17 @@
 import type { Op, Solution } from './solver';
 import type { BattleMode, TeamAssignMode, TeamWinCondition } from './teams';
 import { clampTeamCount } from './teams';
-import type { FactorGameMode } from './factor';
+import type { FactorGameMode, FactorStyle } from './factor';
 import { clampFactorCount, clampFactorDigits, snapFactorMaxPrime, snapFactorPrime } from './factor';
 
-export type { BattleMode, TeamAssignMode, TeamWinCondition, FactorGameMode };
+export type { BattleMode, TeamAssignMode, TeamWinCondition, FactorGameMode, FactorStyle };
 
 export interface Settings {
   /** 遊ぶゲーム: メイクテン 'make10' / 素因数分解 'factor'（同じ部屋のまま切替できる） */
   gameMode: FactorGameMode;
-  /** 素因数分解: 分解する数の桁数（2〜5） */
+  /** 素因数分解: 進め方 'accumulate' 積み上げ式 / 'divide' 割り算式（目標が割れていく） */
+  factorStyle: FactorStyle;
+  /** 素因数分解: 分解する数の桁数（2〜8） */
   factorDigits: number;
   /** 素因数分解: 素因数の下限（この値以上の素数だけが現れる） */
   factorMinPrime: number;
@@ -52,6 +54,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   gameMode: 'make10',
+  factorStyle: 'accumulate',
   factorDigits: 3,
   factorMinPrime: 2,
   factorMaxPrime: 13,
@@ -103,6 +106,8 @@ export interface RoundData {
   factorNumber?: number;
   /** 素因数分解: 正解の素因数（小さい順） */
   factorAnswer?: number[];
+  /** 素因数分解: このラウンドの進め方（旧ルームでは未保存なので settings 側で補う） */
+  factorStyle?: FactorStyle;
   startedAt: number;
   endedAt?: number | null;
   winnerUid?: string | null;
@@ -163,6 +168,7 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
   const s = { ...DEFAULT_SETTINGS, ...(raw || {}) };
   // 旧バージョンのルーム（チーム戦フィールドなし）でも個人戦として動くよう既定値で補う
   if (!GAME_MODES.includes(s.gameMode)) s.gameMode = 'make10';
+  if (s.factorStyle !== 'divide') s.factorStyle = 'accumulate';
   s.factorDigits = clampFactorDigits(s.factorDigits);
   s.factorMaxPrime = snapFactorMaxPrime(s.factorMaxPrime);
   // 下限が上限を超えていたら上限に合わせる（生成できる素数が無くならないように）

@@ -44,6 +44,24 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
         </div>
         {s.gameMode === 'factor' && (
           <div className="mt-3 space-y-3">
+            <Field label="進め方（スタイル）">
+              <div className="flex flex-wrap gap-2">
+                <Chip
+                  disabled={dis}
+                  active={s.factorStyle === 'accumulate'}
+                  onClick={() => onChange({ factorStyle: 'accumulate' })}
+                >
+                  積み上げ式（残りが見えない）
+                </Chip>
+                <Chip
+                  disabled={dis}
+                  active={s.factorStyle === 'divide'}
+                  onClick={() => onChange({ factorStyle: 'divide' })}
+                >
+                  割り算式（目標が割れていく）
+                </Chip>
+              </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <Field label="分解する数の桁数">
                 <select
@@ -135,7 +153,8 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
               </Field>
             </div>
             <p className="jp text-[11px] leading-relaxed text-slate-400">
-              出された合成数を、素数を1つずつ入力（Enter）して割っていく早解きです。
+              出された合成数に素数を1つずつ入力（Enter）して素因数分解する早解きです。
+              積み上げ式は積だけが見えて残りが分からない難しめ、割り算式は目標が割れていく易しめの進め方です。
               素因数は「下限素数〜上限素数」の範囲のものだけが現れ、個数は最小〜最大の範囲で毎回変わります。
               組み合わせによっては作れない場合があり（例: 5桁・素因数2個・上限5）、
               そのときは開始時にエラーになるので桁数・下限・上限・個数を見直してください。

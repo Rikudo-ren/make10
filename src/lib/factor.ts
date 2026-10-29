@@ -8,6 +8,13 @@
 
 export type FactorGameMode = 'make10' | 'factor';
 
+/**
+ * 素因数分解の進め方:
+ * - 'accumulate' 積み上げ式: 素数を掛けて積を目標に一致させる（残りは見えない）
+ * - 'divide' 割り算式: 目標が割られていき、残りの数を1にすれば完了（残りが見える）
+ */
+export type FactorStyle = 'accumulate' | 'divide';
+
 /** GMが選べる素数の下限・上限の候補 */
 export const FACTOR_PRIME_OPTIONS = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
 /** @deprecated 互換用 */
@@ -71,12 +78,13 @@ export function factorize(n: number): number[] {
   return out;
 }
 
-export type FactorGuessError = 'not-integer' | 'too-small' | 'not-prime';
+export type FactorGuessError = 'not-integer' | 'too-small' | 'not-prime' | 'not-a-factor';
 
 export const FACTOR_GUESS_ERROR_TEXT: Record<FactorGuessError, string> = {
   'not-integer': '整数を入力してください',
   'too-small': '2以上の素数を入力してください',
-  'not-prime': '素数ではありません（まだ割れる数です）',
+  'not-prime': '素数ではありません。素数を入力してください',
+  'not-a-factor': '含まれる素因数ではありません',
 };
 
 /** ここまで入力した素数の積 */
@@ -103,6 +111,24 @@ export function checkFactorStep(args: {
   if (v < 2) return { ok: false, reason: 'too-small' };
   if (!isPrime(v)) return { ok: false, reason: 'not-prime' };
   return { ok: true, value: v, nextProduct: args.currentProduct * v };
+}
+
+/**
+ * 割り算式（目標が割られていく進め方）の1手判定。
+ * - 素数でない数: 受理しない（「素数を入力してください」）
+ * - 残りの数を割り切れない素数: 受理しない（「含まれる素因数ではありません」）
+ * - 割り切れる素数: 残りを割って進める。残りが1になったら完了。
+ */
+export function checkFactorDivideStep(args: {
+  remaining: number;
+  value: unknown;
+}): { ok: true; value: number; nextRemaining: number } | { ok: false; reason: FactorGuessError } {
+  const v = typeof args.value === 'string' ? Number(args.value) : args.value;
+  if (typeof v !== 'number' || !Number.isInteger(v)) return { ok: false, reason: 'not-integer' };
+  if (v < 2) return { ok: false, reason: 'too-small' };
+  if (!isPrime(v)) return { ok: false, reason: 'not-prime' };
+  if (args.remaining % v !== 0) return { ok: false, reason: 'not-a-factor' };
+  return { ok: true, value: v, nextRemaining: args.remaining / v };
 }
 
 /** 解答の表示文字列（小さい順に × でつなぐ）と照合キー */

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  checkFactorDivideStep,
   checkFactorStep,
   clampFactorDigits,
   factorize,
@@ -40,6 +41,25 @@ test('積み上げ判定: 素数だけが積まれ、目標を超えても受理
   assert.equal(last.ok, true);
   assert.equal(last.nextProduct, 24);
   assert.equal(productOf([2, 2, 2, 3]), 24);
+});
+
+test('割り算式の判定: 含まれる素因数だけが割れ、違う素数は弾く', () => {
+  // 360 を 2 で割る → 残り180
+  assert.deepEqual(checkFactorDivideStep({ remaining: 360, value: 2 }), {
+    ok: true,
+    value: 2,
+    nextRemaining: 180,
+  });
+  // 残り12を 5 では割り切れない → 含まれる素因数ではない
+  assert.equal(checkFactorDivideStep({ remaining: 12, value: 5 }).reason, 'not-a-factor');
+  // 14 のような合成数は「素数を入力してください」側（not-prime）が優先
+  assert.equal(checkFactorDivideStep({ remaining: 360, value: 14 }).reason, 'not-prime');
+  // 1 や 0 は素数として扱わない
+  assert.equal(checkFactorDivideStep({ remaining: 360, value: 1 }).reason, 'too-small');
+  // 残りが1になる手が完了手になる
+  const last = checkFactorDivideStep({ remaining: 7, value: 7 });
+  assert.equal(last.ok, true);
+  assert.equal(last.nextRemaining, 1);
 });
 
 test('生成: 桁数・下限〜上限・素因数の個数を満たす合成数だけを出す', () => {

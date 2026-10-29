@@ -428,6 +428,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
           {isFactor ? (
           <FactorArea
             value={r.factorNumber ?? r.target}
+            factorStyle={r.factorStyle ?? settings.factorStyle}
             penaltyMode={settings.penaltyMode}
             disabled={judging || iAmSolved}
             disabledReason={
