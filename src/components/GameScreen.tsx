@@ -99,6 +99,14 @@ function SolutionsList({
 
 const COUNTDOWN_MS = 3000;
 
+/** タイマー表示: 60秒以上は m:ss.d、それ未満は s.d */
+function formatTimer(ms: number): string {
+  const totalSec = Math.max(0, ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec - min * 60;
+  return min > 0 ? `${min}:${sec.toFixed(1).padStart(4, '0')}` : sec.toFixed(1);
+}
+
 export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const { room, players, uid, isGM } = ctrl;
   const [tick, setTick] = useState(0);
@@ -228,6 +236,11 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const myLiveIndex = uid ? liveCorrectAnswers.findIndex(([id]) => id === uid) : -1;
   const iAmSolved = myLiveIndex >= 0;
   const myLiveRank = myLiveIndex >= 0 ? myLiveIndex + 1 : null;
+  const myRecordMs = iAmSolved
+    ? typeof myAnswer?.adjustedElapsedMs === 'number'
+      ? myAnswer.adjustedElapsedMs
+      : frozenElapsedRef.current
+    : null;
 
   const playerNamesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -338,30 +351,38 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end">
-            <span className="label text-[9px] text-slate-500">
-              {settings.unlimitedTime ? 'ELAPSED' : 'TIME LEFT'}
-            </span>
-            <span
-              className={cn(
-                'num text-[28px] leading-none font-black',
-                remainMs !== null && remainMs < 10000 ? 'text-rose-300' : 'text-white',
-              )}
-              style={{ textShadow: '0 0 20px rgba(34,224,255,.3)' }}
-            >
-              {showMask ? '—' : ((remainMs ?? liveElapsed) / 1000).toFixed(1)}
-            </span>
-            {!showMask && (!settings.unlimitedTime || frozenElapsedRef.current !== null) && (
-              <span className="jp mt-1 text-[10px] text-slate-400">
-                {!settings.unlimitedTime && <>経過 {(liveElapsed / 1000).toFixed(1)}秒</>}
-                {frozenElapsedRef.current !== null && (
-                  <>
-                    {!settings.unlimitedTime && ' ／ '}
-                    あなた {(frozenElapsedRef.current / 1000).toFixed(1)}秒
-                  </>
-                )}
+          <div className="flex items-stretch overflow-hidden border border-cyan-300/25 bg-black/35">
+            <div className="flex min-w-[92px] flex-col items-center px-3 py-1.5">
+              <span className="label jp text-[8px] text-slate-400">
+                {settings.unlimitedTime ? '経過時間' : '残り時間'}
               </span>
-            )}
+              <span
+                className={cn(
+                  'num text-[22px] leading-none font-black tabular-nums',
+                  remainMs !== null && remainMs < 10000 ? 'text-rose-300' : 'text-white',
+                )}
+                style={{ textShadow: '0 0 20px rgba(34,224,255,.3)' }}
+              >
+                {showMask ? '—' : formatTimer(remainMs ?? liveElapsed)}
+              </span>
+            </div>
+            <div className="flex min-w-[92px] flex-col items-center border-l border-white/10 px-3 py-1.5">
+              <span className="label jp text-[8px] text-slate-400">
+                {myRecordMs !== null
+                  ? settings.unlimitedTime
+                    ? '自分の記録'
+                    : '自分の正解時間'
+                  : '自分のタイマー'}
+              </span>
+              <span
+                className={cn(
+                  'num text-[22px] leading-none font-black tabular-nums',
+                  myRecordMs !== null ? 'text-emerald-300' : 'text-cyan-100',
+                )}
+              >
+                {showMask ? '—' : formatTimer(myRecordMs ?? liveElapsed)}
+              </span>
+            </div>
           </div>
           <div className="flex flex-col items-center border border-solar/40 bg-solar/8 px-3 py-1">
             <span className="label text-[8px] text-amber-200/70">{isFactor ? '分解する数' : 'TARGET'}</span>
