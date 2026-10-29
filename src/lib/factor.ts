@@ -147,17 +147,39 @@ export interface FactorPuzzle {
 }
 
 export interface FactorGenOptions {
-  /** 合成数の桁数 */
+  /** 合成数の桁数（0以下は「指定なし」= 2〜8桁のどれか） */
   digits: number;
   /** 素因数の下限（この値以上の素数だけを使う） */
   minPrime?: number;
   /** 素因数の上限（この値以下の素数だけを使う） */
   maxPrime: number;
-  /** 素因数の個数（重複込み）の範囲 */
+  /** 素因数の個数（重複込み）の範囲（countMin が0以下は「指定なし」= 2〜10個のどれか） */
   countMin: number;
   countMax: number;
   rng?: () => number;
   maxAttempts?: number;
+}
+
+/**
+ * 設定値を生成で使う実効条件へそろえる。
+ * 「指定なし」は、桁数なら2〜8桁、素因数の個数なら2〜10個の範囲として扱い、
+ * 指定されている側の条件に合う問題だけが出るようにする。
+ */
+function effectiveFactorConstraints(opts: FactorGenOptions) {
+  const maxPrime = snapFactorMaxPrime(opts.maxPrime);
+  const minPrime = Math.min(snapFactorPrime(opts.minPrime ?? 2, 2), maxPrime);
+  const rawDigits = opts.digits === undefined ? 3 : Math.floor(Number(opts.digits));
+  const anyDigits = Number.isFinite(rawDigits) && rawDigits <= 0;
+  const digits = anyDigits ? 0 : clampFactorDigits(rawDigits);
+  const lo = anyDigits ? 10 : 10 ** (digits - 1);
+  const hi = anyDigits ? 99_999_999 : 10 ** digits - 1;
+  const rawCountMin = Math.floor(Number(opts.countMin));
+  const anyCount = !Number.isFinite(rawCountMin) || rawCountMin <= 0;
+  const countMin = anyCount ? 2 : clampFactorCount(rawCountMin, 2);
+  const countMax = anyCount
+    ? 10
+    : Math.max(countMin, clampFactorCount(opts.countMax, countMin));
+  return { minPrime, maxPrime, anyDigits, digits, lo, hi, anyCount, countMin, countMax };
 }
 
 /**
@@ -166,24 +188,19 @@ export interface FactorGenOptions {
  * ここで理由が返らない場合でも、素数の組み合わせ次第では作れないことがある。
  */
 export function factorGenerationIssue(opts: FactorGenOptions): string | null {
-  const digits = clampFactorDigits(opts.digits);
-  const maxPrime = snapFactorMaxPrime(opts.maxPrime);
-  const minPrime = Math.min(snapFactorPrime(opts.minPrime ?? 2, 2), maxPrime);
-  const countMin = clampFactorCount(opts.countMin, 2);
-  const countMax = Math.max(countMin, clampFactorCount(opts.countMax, countMin));
-  const lo = 10 ** (digits - 1);
-  const hi = 10 ** digits - 1;
-
-  if (primesBetween(minPrime, maxPrime).length === 0) {
+  const c = effectiveFactorConstraints(opts);
+  if (primesBetween(c.minPrime, c.maxPrime).length === 0) {
     return '指定した下限〜上限の範囲に素数がありません';
   }
-  const smallestProduct = minPrime ** countMin;
-  if (smallestProduct > hi) {
-    return `素因数を${countMin}個以上掛けると、最小の素数${minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、${digits}桁を超えます`;
+  const smallestProduct = c.minPrime ** c.countMin;
+  if (smallestProduct > c.hi) {
+    return c.anyDigits
+      ? `素因数を${c.countMin}個以上掛けると、最小の素数${c.minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、扱える上限の8桁を超えます`
+      : `素因数を${c.countMin}個以上掛けると、最小の素数${c.minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、${c.digits}桁を超えます`;
   }
-  const largestProduct = maxPrime ** countMax;
-  if (largestProduct < lo) {
-    return `素因数を${countMax}個まで掛けても、最大の素数${maxPrime}だけでは積が${largestProduct.toLocaleString()}までしかならず、${digits}桁に届きません`;
+  const largestProduct = c.maxPrime ** c.countMax;
+  if (!c.anyDigits && largestProduct < c.lo) {
+    return `素因数を${c.countMax}個まで掛けても、最大の素数${c.maxPrime}だけでは積が${largestProduct.toLocaleString()}までしかならず、${c.digits}桁に届きません`;
   }
   return null;
 }
@@ -195,15 +212,9 @@ export function factorGenerationIssue(opts: FactorGenOptions): string | null {
  * （例: 5桁・素因数2個・上限5）では null を返す。
  */
 export function generateFactorPuzzle(opts: FactorGenOptions): FactorPuzzle | null {
-  const digits = clampFactorDigits(opts.digits);
-  const maxPrime = snapFactorMaxPrime(opts.maxPrime);
-  const minPrime = Math.min(snapFactorPrime(opts.minPrime ?? 2, 2), maxPrime);
-  const countMin = clampFactorCount(opts.countMin, 2);
-  const countMax = Math.max(countMin, clampFactorCount(opts.countMax, countMin));
+  const { minPrime, maxPrime, lo, hi, countMin, countMax } = effectiveFactorConstraints(opts);
   const primes = primesBetween(minPrime, maxPrime);
   if (primes.length === 0) return null;
-  const lo = 10 ** (digits - 1);
-  const hi = 10 ** digits - 1;
   const rng = opts.rng ?? Math.random;
   const attempts = opts.maxAttempts ?? 60_000;
 
