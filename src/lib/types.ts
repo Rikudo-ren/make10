@@ -92,6 +92,8 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export interface PlayerData {
   name: string;
+  /** 退出済み（名前・得点・所属は結果表示のために残し、在室扱いにはしない） */
+  left?: boolean;
   score?: number;
   isReady?: boolean;
   rttMs?: number;

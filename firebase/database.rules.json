@@ -15,6 +15,7 @@
         "players": {
           "$uid": {
             "name": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "left": { ".validate": "newData.isBoolean()" },
             "score": { ".validate": "newData.isNumber()" },
             "isReady": { ".validate": "newData.isBoolean()" },
             "teamId": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" }

@@ -70,6 +70,11 @@ export function IndividualStandings({
                 {mine && (
                   <span className="shrink-0 text-[8px] tracking-wider text-cyan-300/80">YOU</span>
                 )}
+                {r.left && (
+                  <span className="jp shrink-0 border border-white/15 px-1 text-[8px] font-bold text-slate-400">
+                    退出
+                  </span>
+                )}
                 <TeamBadge teamId={r.teamId} size="sm" />
               </div>
               {reveal ? (

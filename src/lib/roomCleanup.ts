@@ -73,14 +73,15 @@ export function decideSweep(
 
 /**
  * 在室者が1人でもいるか。
- * presence は onDisconnect で name を消す実装なので、
- * 「name が入っているプレイヤーが1人もいない」＝誰もいない部屋とみなす。
+ * 退出した人は結果表示用に name を残したまま left フラグで管理するので、
+ * 「name があり left でないプレイヤー」が1人もいない部屋を「誰もいない」とみなす。
  */
 export function hasAnyPlayer(players: unknown): boolean {
   if (!players || typeof players !== 'object') return false;
   for (const raw of Object.values(players as Record<string, unknown>)) {
-    const name = (raw as { name?: unknown } | null | undefined)?.name;
-    if (typeof name === 'string' && name.trim().length > 0) return true;
+    const p = raw as { name?: unknown; left?: unknown } | null | undefined;
+    const name = p?.name;
+    if (typeof name === 'string' && name.trim().length > 0 && p?.left !== true) return true;
   }
   return false;
 }

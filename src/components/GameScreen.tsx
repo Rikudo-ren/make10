@@ -12,6 +12,7 @@ import { IndividualStandings } from './IndividualStandings';
 import {
   computeIndividualStandings,
   computeTeamStandings,
+  filterMatchParticipants,
   formatPrimaryValue,
   TEAM_DEFS,
   WIN_CONDITION_LABEL,
@@ -108,7 +109,7 @@ function formatTimer(ms: number): string {
 }
 
 export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
-  const { room, players, uid, isGM } = ctrl;
+  const { room, players, participants, uid, isGM } = ctrl;
   const [tick, setTick] = useState(0);
   const [confirmForcePass, setConfirmForcePass] = useState(false);
   const [confirmAbort, setConfirmAbort] = useState(false);
@@ -222,7 +223,9 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const closeCall =
     ranked.length >= 2 &&
     Math.abs(ranked[1][1].adjustedElapsedMs - ranked[0][1].adjustedElapsedMs) <= 300;
-  const nameOf = (id: string) => players.find((p) => p.uid === id)?.name ?? '退出したプレイヤー';
+  // 名前・チームの参照は退出した人も含む名簿から（結果に残すため）
+  const nameOf = (id: string) => participants.find((p) => p.uid === id)?.name ?? '退出したプレイヤー';
+  const leftOf = (id: string) => participants.some((p) => p.uid === id && p.left);
   const allSols = r.solutions ?? [];
 
   // リアルタイムの正解者数と枠
@@ -269,13 +272,14 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
     const merged: Record<string, any> = { ...(room?.history ?? {}) };
     if (r?.results) merged[String(r.roundIndex)] = r;
     return computeTeamStandings({
-      players,
+      // 抜けた人でも結果が残っていれば集計に含める（在室者だけで再計算しない）
+      players: filterMatchParticipants(participants, merged, matchStartIndex),
       teamCount: settings.teamCount,
       winCondition: settings.teamWinCondition,
       history: merged,
       matchStartIndex,
     });
-  }, [isTeam, room?.history, r, players, settings.teamCount, settings.teamWinCondition, matchStartIndex]);
+  }, [isTeam, room?.history, r, participants, settings.teamCount, settings.teamWinCondition, matchStartIndex]);
   const myTeamId = uid ? players.find((p) => p.uid === uid)?.teamId : null;
   // 途中参加などで自分の所属がまだ無いときは、メンバーを見て自分で選ぶ
   const needsMyTeam =
@@ -305,8 +309,12 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const individualRows = useMemo(() => {
     const merged: Record<string, any> = { ...(room?.history ?? {}) };
     if (r?.results) merged[String(r.roundIndex)] = r;
-    return computeIndividualStandings({ players, history: merged, matchStartIndex });
-  }, [room?.history, r, players, matchStartIndex]);
+    return computeIndividualStandings({
+      players: filterMatchParticipants(participants, merged, matchStartIndex),
+      history: merged,
+      matchStartIndex,
+    });
+  }, [room?.history, r, participants, matchStartIndex]);
   const revealIndividual = !settings.hideLiveAnswers || judging;
   // 非公開中は得点順で並べると順位が漏れるため、参加順のまま渡す
   const displayIndividualRows = revealIndividual
@@ -776,7 +784,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                   <div className="mt-4 flex flex-wrap justify-center gap-1.5">
                     {TEAM_DEFS.slice(0, settings.teamCount).map((def) => {
                       const gained = ranked
-                        .filter(([id]) => players.find((p) => p.uid === id)?.teamId === def.id)
+                        .filter(([id]) => participants.find((p) => p.uid === id)?.teamId === def.id)
                         .reduce((sum, [, res]) => sum + (res.gained ?? 0), 0);
                       return (
                         <span
@@ -812,8 +820,13 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
                               {id === uid && (
                                 <span className="shrink-0 text-[9px] tracking-wider text-cyan-300">YOU</span>
                               )}
+                              {leftOf(id) && (
+                                <span className="jp shrink-0 border border-white/15 px-1 text-[8px] font-bold text-slate-400">
+                                  退出
+                                </span>
+                              )}
                               {isTeam && (
-                                <TeamBadge teamId={players.find((p) => p.uid === id)?.teamId} size="sm" />
+                                <TeamBadge teamId={participants.find((p) => p.uid === id)?.teamId} size="sm" />
                               )}
                             </span>
                             <span className="num shrink-0 text-[11px] tabular-nums text-cyan-200/80">

@@ -53,6 +53,8 @@ export interface TeamPlayerInput {
   name?: string;
   score?: number;
   teamId?: number | null;
+  /** 退出済み（対戦の流れからは外れるが、結果・成績表示には残す） */
+  left?: boolean;
 }
 
 /** roundIndex -> そのラウンドの確定結果（RoundData 相当の最小形） */
@@ -92,6 +94,8 @@ export interface TeamMemberStanding {
   score: number;
   firstPlaceCount: number;
   correctCount: number;
+  /** 退出済みかどうか（表示には残したまま印を付ける） */
+  left: boolean;
 }
 
 export interface TeamStanding {
@@ -175,6 +179,7 @@ export function computeTeamStandings(args: {
       score: p.score ?? 0,
       firstPlaceCount: c.firstPlaceCount,
       correctCount: c.correctCount,
+      left: p.left === true,
     };
     if (isValidTeamId(p.teamId, teamCount)) {
       byTeam.get(Math.floor(Number(p.teamId)))!.push(member);
@@ -219,6 +224,8 @@ export interface IndividualStanding {
   score: number;
   firstPlaceCount: number;
   correctCount: number;
+  /** 退出済みかどうか（表示には残したまま印を付ける） */
+  left: boolean;
 }
 
 /**
@@ -242,6 +249,7 @@ export function computeIndividualStandings(args: {
         score: p.score ?? 0,
         firstPlaceCount: c.firstPlaceCount,
         correctCount: c.correctCount,
+        left: p.left === true,
       };
     });
   rows.sort(
@@ -253,6 +261,27 @@ export function computeIndividualStandings(args: {
       a.uid.localeCompare(b.uid),
   );
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+/**
+ * 成績表示に載せる「この試合の参加者」を返す。
+ * 在室中の人は全員、退出した人は「この試合で確定結果が残っている場合だけ」残す。
+ * （抜けた人が結果画面やスコア集計から消えてしまわないようにするため）
+ */
+export function filterMatchParticipants<T extends TeamPlayerInput>(
+  players: T[],
+  history: TeamHistory | null | undefined,
+  matchStartIndex = 0,
+): T[] {
+  const played = new Set<string>();
+  if (history) {
+    for (const round of Object.values(history)) {
+      if (!round || typeof round !== 'object') continue;
+      if (typeof round.roundIndex === 'number' && round.roundIndex < matchStartIndex) continue;
+      for (const uid of Object.keys(round.results ?? {})) played.add(uid);
+    }
+  }
+  return players.filter((p) => !p.left || played.has(p.uid));
 }
 
 /** 優勝チーム一覧。primaryValue が同値で並んだ場合は複数返る（= 引き分け） */
