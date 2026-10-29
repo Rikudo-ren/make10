@@ -7,6 +7,7 @@ import { IndividualStandings } from './IndividualStandings';
 import {
   computeIndividualStandings,
   computeTeamStandings,
+  filterMatchParticipants,
   formatPrimaryValue,
   getWinningTeams,
   WIN_CONDITION_LABEL,
@@ -16,9 +17,8 @@ import { playSe } from '../lib/audio';
 import { cn } from '../utils/cn';
 
 export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
-  const { players, isGM, uid, room } = ctrl;
+  const { participants, isGM, uid, room } = ctrl;
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  const champ = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
 
   // チーム戦の最終判定（選択した勝利条件の値だけで決める。同値なら引き分け）
   const settings = normalizeSettings(room?.settings);
@@ -28,9 +28,12 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
   if (room?.currentRound?.results) {
     mergedHistory[String(room.currentRound.roundIndex)] = room.currentRound;
   }
+  // 抜けた人も、結果が残っていれば最終成績に含める（在室者だけで判定しない）
+  const standingPlayers = filterMatchParticipants(participants, mergedHistory, matchStartIndex);
+  const champ = [...standingPlayers].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
   const { standings: teamStandings } = isTeam
     ? computeTeamStandings({
-        players,
+        players: standingPlayers,
         teamCount: settings.teamCount,
         winCondition: settings.teamWinCondition,
         history: mergedHistory,
@@ -39,12 +42,12 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
     : { standings: [] };
   const winningTeams = isTeam ? getWinningTeams(teamStandings) : [];
   const individualRows = computeIndividualStandings({
-    players,
+    players: standingPlayers,
     history: mergedHistory,
     matchStartIndex,
   });
   const isDraw = winningTeams.length > 1;
-  const myTeamId = uid ? players.find((p) => p.uid === uid)?.teamId : null;
+  const myTeamId = uid ? participants.find((p) => p.uid === uid)?.teamId : null;
   const playedRef = useRef(false);
 
   useEffect(() => {
@@ -144,7 +147,8 @@ export function FinalResult({ ctrl }: { ctrl: UseRoom }) {
                     <div className="jp mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-slate-200">
                       {t.members.map((m) => (
                         <span key={m.uid} className={cn(m.uid === uid && 'font-black text-cyan-200')}>
-                          {m.name}{' '}
+                          {m.name}
+                          {m.left && <span className="ml-1 text-slate-500">（退出）</span>}{' '}
                           <span className="num text-slate-400">
                             {m.score}点・1位{m.firstPlaceCount}回・正解{m.correctCount}回
                           </span>

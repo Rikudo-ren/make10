@@ -92,6 +92,10 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export interface PlayerData {
   name: string;
+  /** 退出済み（名前・得点・所属は結果表示のために残し、在室扱いにはしない） */
+  left?: boolean;
+  /** 参加中の試合の開始 roundIndex（その試合中に部屋にいた人の印。最終リザルトに載せる判定用） */
+  matchStart?: number;
   score?: number;
   isReady?: boolean;
   rttMs?: number;

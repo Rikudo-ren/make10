@@ -174,7 +174,16 @@ export function useRoom() {
     return () => unsub();
   }, [roomId]);
 
+  // 在室中のプレイヤー（対戦の進行・操作はこのリストが基準）
   const players = useMemo(() => {
+    const p = room?.players ?? {};
+    return Object.entries(p)
+      .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true)
+      .map(([id, v]) => ({ uid: id, ...v }));
+  }, [room]);
+
+  // 参加者名簿（退出した人も含む）。結果画面・成績集計はこちらを使う
+  const participants = useMemo(() => {
     const p = room?.players ?? {};
     return Object.entries(p)
       .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
@@ -199,7 +208,8 @@ export function useRoom() {
   );
 
   const attachPresence = useCallback((code: string, myUid: string) => {
-    onDisconnect(ref(db, `rooms/${code}/players/${myUid}/name`)).remove();
+    // 切断しても名前は残し、退出フラグだけ立てる（結果画面に残すため）
+    onDisconnect(ref(db, `rooms/${code}/players/${myUid}/left`)).set(true);
     onDisconnect(ref(db, `rooms/${code}/players/${myUid}/isReady`)).remove();
   }, []);
 
@@ -349,8 +359,8 @@ export function useRoom() {
 
   /**
    * 再接続時の在室復元。
-   * 通信が切れると onDisconnect が players/{uid}/name を消すため、
-   * 戻ってきたときに名前（と準備状態）を書き直す。
+   * 通信が切れると onDisconnect が players/{uid}/left を立てるため、
+   * 戻ってきたときに名前（と準備状態）を書き直して left を解除する。
    * すでにルームが削除されていた場合は、中途半端な部屋を作らないよう何もしない。
    */
   useEffect(() => {
@@ -372,7 +382,7 @@ export function useRoom() {
             localStorage.getItem('make10.name') ??
             'プレイヤー';
           const isReady = myReadyRef.current ?? data.gmUid === myUid;
-          await update(ref(db, `rooms/${code}/players/${myUid}`), { name, isReady });
+          await update(ref(db, `rooms/${code}/players/${myUid}`), { name, isReady, left: null });
           attachPresence(code, myUid);
           void touchRoom(code);
         } catch {
@@ -452,7 +462,7 @@ export function useRoom() {
         const data = snap.val() as RoomData;
         const settings = normalizeSettings(data.settings);
         const playerList = Object.entries(data.players ?? {})
-          .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+          .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true)
           .map(([pUid, v]) => ({
             uid: pUid,
             name: v.name,
@@ -523,7 +533,18 @@ export function useRoom() {
           name: uniqueName(name, taken),
           isReady: false,
           rttMs: 0,
+          // 再参加したら退出フラグを外す（得点・チームは上で復元済み）
+          left: null,
         };
+        // 試合の途中で入ってきたら「この試合の参加者」として記録する
+        // （1問も解かずに抜けても最終リザルトに載せるため）
+        const currentMatchStart = (data.currentRound as any)?.matchStartIndex;
+        if (
+          (data.status === 'playing' || data.status === 'judging') &&
+          typeof currentMatchStart === 'number'
+        ) {
+          playerUpdates.matchStart = currentMatchStart;
+        }
         // 得点は保存済みのものを絶対に上書きしない（抜けた人が戻ると復活する）。
         // まだ得点を持っていない新規参加だけ 0 で初期化する。
         if (typeof existing?.score !== 'number') playerUpdates.score = 0;
@@ -583,7 +604,7 @@ export function useRoom() {
           return;
         }
         const name = meSnap.val()?.name ?? localStorage.getItem('make10.name') ?? 'プレイヤー';
-        await update(ref(db, `rooms/${saved}/players/${uid}`), { name, rttMs: 0 });
+        await update(ref(db, `rooms/${saved}/players/${uid}`), { name, rttMs: 0, left: null });
         attachPresence(saved, uid);
         void touchRoom(saved);
         setRoomId(saved);
@@ -609,8 +630,9 @@ export function useRoom() {
           await remove(ref(db, `rooms/${code}`));
           await remove(ref(db, `rooms/index/${code}`));
         } else {
-          await remove(ref(db, `rooms/${code}/players/${myUid}/name`));
-          await remove(ref(db, `rooms/${code}/players/${myUid}/isReady`));
+          // 名前・得点・所属チームは消さず、退出フラグだけ立てる
+          // （抜けた人も結果画面や最終成績に残すため）
+          await update(ref(db, `rooms/${code}/players/${myUid}`), { left: true, isReady: null });
           // 退出した結果だれもいなくなったら、掃除を待たずにその場で消す
           try {
             const left = await get(ref(db, `rooms/${code}/players`));
@@ -708,7 +730,7 @@ export function useRoom() {
     const settings = normalizeSettings(data.settings);
     if (settings.battleMode !== 'team') return;
     const list = Object.entries(data.players ?? {})
-      .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+      .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true)
       .map(([pUid, v]) => ({ uid: pUid, name: v.name, score: v.score ?? 0, teamId: v.teamId ?? null }));
     const assignment = assignTeams({
       players: list,
@@ -864,13 +886,23 @@ export function useRoom() {
     for (const id of ids) {
       await set(ref(db, `rooms/${code}/players/${id}/score`), 0);
     }
+    // この試合の参加者として記録する（最終リザルトに載せるため）。
+    // 退出済みの人には押さない（試合が始まる前に抜けた人は対象外）。
+    const stamp: Record<string, number> = {};
+    for (const id of ids) {
+      const v = data.players?.[id];
+      if (v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true) {
+        stamp[`rooms/${code}/players/${id}/matchStart`] = startIndex;
+      }
+    }
+    if (Object.keys(stamp).length > 0) await update(ref(db), stamp);
     // チーム分け: バランス/ランダムは開始時に確定、手動はロビーの所属を引き継ぎ
     // 未所属だけ人数の少ないチームへ補充する。個人戦なら以前の所属を取り除く。
     // ※ バランス分けはリセット前のスコア（前回の結果）を使うので、得点リセットより
     //    先に data から読むこと（data はリセット前のスナップショット）。
     if (settings.battleMode === 'team') {
       const list = Object.entries(data.players ?? {})
-        .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+        .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true)
         .map(([pUid, v]) => ({ uid: pUid, name: v.name, score: v.score ?? 0, teamId: v.teamId ?? null }));
       const assignment = assignTeams({
         players: list,
@@ -1106,7 +1138,7 @@ export function useRoom() {
         { formula: string; key?: string; adjustedElapsedMs: number; passed?: boolean }
       >;
       const activeIds = Object.entries(data.players ?? {})
-        .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0)
+        .filter(([, v]) => v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true)
         .map(([pUid]) => pUid);
       const updates: Record<string, unknown> = {};
       for (const pUid of activeIds) {
@@ -1258,6 +1290,7 @@ export function useRoom() {
     roomId,
     room,
     players,
+    participants,
     isGM,
     busy,
     error,

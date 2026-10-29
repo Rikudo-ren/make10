@@ -4,6 +4,7 @@ import {
   assignTeams,
   computeIndividualStandings,
   computeTeamStandings,
+  filterMatchParticipants,
   getWinningTeams,
   pickJoinTeamId,
 } from '../src/lib/teams.ts';
@@ -186,4 +187,66 @@ test('集計: 未所属のプレイヤーはどのチームにも数えない', 
   });
   assert.deepEqual(unassigned.map((p) => p.uid), ['z']);
   assert.equal(standings.reduce((s, t) => s + t.totalScore, 0), 9);
+});
+
+
+test('退出者: 結果が残っていれば成績に残り、結果がない場合は名簿から外れる', () => {
+  const roster = [
+    { uid: 'a', name: 'a', score: 30, teamId: 0 },
+    { uid: 'b', name: 'b', score: 10, teamId: 0, left: true }, // 抜けたが結果あり
+    { uid: 'c', name: 'c', score: 0, teamId: 1, left: true }, // 抜けた＋結果なし
+    { uid: 'd', name: 'd', score: 20, teamId: 1 },
+  ];
+  const history = {
+    1: { roundIndex: 1, results: { a: { rank: 1, gained: 20 }, b: { rank: 2, gained: 10 } } },
+  };
+  const kept = filterMatchParticipants(roster, history, 0);
+  assert.deepEqual(kept.map((pl) => pl.uid), ['a', 'b', 'd']);
+  // 試合開始より前のラウンド結果だけでは残らない
+  const old = filterMatchParticipants(roster, { 0: { roundIndex: 0, results: { b: {} } } }, 1);
+  assert.deepEqual(old.map((pl) => pl.uid), ['a', 'd']);
+});
+
+test('退出者: チーム合計・平均と個人順位にそのまま含まれる', () => {
+  const roster = [
+    { uid: 'a', name: 'a', score: 30, teamId: 0 },
+    { uid: 'b', name: 'b', score: 25, teamId: 0, left: true },
+    { uid: 'd', name: 'd', score: 40, teamId: 1 },
+  ];
+  const history = {
+    1: { roundIndex: 1, winnerUid: 'b', results: { b: { rank: 1, gained: 25 }, a: { rank: 2, gained: 10 } } },
+  };
+  const participants = filterMatchParticipants(roster, history, 0);
+  const { standings } = computeTeamStandings({
+    players: participants,
+    teamCount: 2,
+    winCondition: 'totalScore',
+    history,
+  });
+  const t0 = standings.find((t) => t.teamId === 0);
+  assert.equal(t0.totalScore, 55); // 在室者(a)だけの30ではない
+  assert.equal(t0.averageScore, 27.5);
+  assert.equal(t0.members.find((m) => m.uid === 'b').left, true);
+
+  const rows = computeIndividualStandings({ players: participants, history });
+  assert.deepEqual(rows.map((r) => [r.uid, r.rank]), [['d', 1], ['a', 2], ['b', 3]]);
+  assert.equal(rows.find((r) => r.uid === 'b').left, true);
+  assert.equal(rows.find((r) => r.uid === 'a').left, false);
+});
+
+
+test('退出者: 試合中に部屋にいた印（matchStart）があれば結果がなくても残る', () => {
+  const roster = [
+    { uid: 'a', name: 'a', score: 30, teamId: 0 },
+    // 試合開始時にいて、1問も解かずに抜けた人 → 最終リザルトに載る
+    { uid: 'e', name: 'e', score: 0, teamId: 0, left: true, matchStart: 5 },
+    // 途中参加して、解かずに抜けた人 → 載る
+    { uid: 'f', name: 'f', score: 0, teamId: 1, left: true, matchStart: 5 },
+    // 前の試合で抜けたきりの人 → 今の試合のリザルトには載らない
+    { uid: 'g', name: 'g', score: 0, teamId: 1, left: true, matchStart: 2 },
+    // 試合が始まる前に抜けた人（印なし・結果なし） → 載らない
+    { uid: 'h', name: 'h', score: 0, teamId: 1, left: true },
+  ];
+  const kept = filterMatchParticipants(roster, { 6: { roundIndex: 6, results: { a: { rank: 1 } } } }, 5);
+  assert.deepEqual(kept.map((pl) => pl.uid), ['a', 'e', 'f']);
 });
