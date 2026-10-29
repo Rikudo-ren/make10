@@ -109,7 +109,11 @@ export interface GenerateProgress {
 }
 
 export interface GenerateOptions {
-  /** この時間を超えたら諦めて null を返す（既定 3000ms） */
+  /**
+   * この時間を超えたら諦めて null を返す。
+   * 省略または0以下の場合は自動で打ち切らず、見つかるか shouldCancel が
+   * true になるまで探索を続ける。
+   */
   deadlineMs?: number;
   /** 進捗コールバック。UI を固めないために数十msごとに呼ばれる */
   onProgress?: (p: GenerateProgress) => void;
@@ -125,7 +129,7 @@ export interface GenerateOptions {
  * 重い設定でもブラウザを固めないように、
  *  - 1回の探索にノード予算をかける
  *  - 10ms ごとにイベントループへ制御を返す
- *  - 全体の締切を設ける（超えたら null）
+ *  - 既定では時間で勝手に打ち切らず、呼び出し側の shouldCancel で中止できる
  * という作りになっている。呼び出し側は await して使うこと。
  */
 export async function generatePuzzleAsync(
@@ -135,9 +139,9 @@ export async function generatePuzzleAsync(
   // 原理的に不可能な設定は一瞬で諦める（待たせない）
   if (s.targetMode === 'fixed' && definitelyImpossible(s, s.targetValue)) return null;
 
-  const deadlineMs = opts.deadlineMs ?? 3000;
+  const deadlineMs = opts.deadlineMs ?? 0;
   const startedAt = now();
-  const deadline = startedAt + deadlineMs;
+  const deadline = deadlineMs > 0 ? startedAt + deadlineMs : Number.POSITIVE_INFINITY;
   const seen = new Set<string>();
   let attempts = 0;
   let duplicateStreak = 0;

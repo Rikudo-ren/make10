@@ -3,6 +3,8 @@ import type { UseRoom } from '../lib/useRoom';
 import { normalizeSettings } from '../lib/types';
 import type { Solution } from '../lib/solver';
 import { PlayArea } from './PlayArea';
+import { FactorArea } from './FactorArea';
+import { factorFormula, factorize } from '../lib/factor';
 import { ChatComposer } from './ChatDock';
 import { TeamBadge } from './TeamBadge';
 import { TeamPicker } from './TeamPicker';
@@ -218,6 +220,9 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
 
   const myKey = uid && results[uid] ? results[uid].key : undefined;
   const showMask = isCountdown || transitioning;
+  // このラウンドのゲーム種別（ラウンドに保存された値を優先し、旧データでは設定で補う）
+  const isFactor = (r.gameMode ?? settings.gameMode) === 'factor';
+  const factorAnswer = r.factorAnswer ?? (isFactor ? factorize(r.factorNumber ?? r.target) : []);
 
   // チーム戦の途中経過（勝利条件の値で並べる。現在のラウンドは履歴と二重に数えない）
   const isTeam = settings.battleMode === 'team';
@@ -293,11 +298,18 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               {String(settings.roundCount).padStart(2, '0')}
             </b>
           </span>
-          {settings.showDifficulty && typeof r.solutionCount === 'number' && (
-            <span className="chip border-fuchsia-400/40 bg-fuchsia-500/10 text-fuchsia-200">
-              SOLUTIONS {r.solutionCount}
-            </span>
-          )}
+          {settings.showDifficulty &&
+            (isFactor ? (
+              <span className="chip border-fuchsia-400/40 bg-fuchsia-500/10 text-fuchsia-200">
+                素因数 {factorAnswer.length}個
+              </span>
+            ) : (
+              typeof r.solutionCount === 'number' && (
+                <span className="chip border-fuchsia-400/40 bg-fuchsia-500/10 text-fuchsia-200">
+                  SOLUTIONS {r.solutionCount}
+                </span>
+              )
+            ))}
         </div>
 
         <div className="flex items-center gap-3">
@@ -316,7 +328,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </span>
           </div>
           <div className="flex flex-col items-center border border-solar/40 bg-solar/8 px-3 py-1">
-            <span className="label text-[8px] text-amber-200/70">TARGET</span>
+            <span className="label text-[8px] text-amber-200/70">{isFactor ? '分解する数' : 'TARGET'}</span>
             <span className="num text-[24px] leading-none font-black text-amber-300">{r.target}</span>
           </div>
         </div>
@@ -413,6 +425,29 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             </div>
           )}
 
+          {isFactor ? (
+          <FactorArea
+            value={r.factorNumber ?? r.target}
+            factorStyle={r.factorStyle ?? settings.factorStyle}
+            penaltyMode={settings.penaltyMode}
+            disabled={judging || iAmSolved}
+            disabledReason={
+              judging
+                ? 'ラウンド終了。結果を表示しています。'
+                : iAmSolved
+                  ? settings.hideLiveAnswers
+                    ? '正解済み。結果発表をお待ちください…'
+                    : `正解済み（${myLiveRank}位で抜け／式: ${myAnswer?.formula}）他のプレイヤーの解答を待っています…`
+                  : undefined
+            }
+            passed={!!myAnswer?.passed}
+            roundKey={r.roundIndex}
+            isCountdown={showMask}
+            onSolved={(f, k) => ctrl.submitAnswer(f, k)}
+            onPass={() => ctrl.passRound()}
+            onCancelPass={room.status === 'playing' ? () => ctrl.cancelPass() : undefined}
+          />
+          ) : (
           <PlayArea
             numbers={r.numbers}
             target={r.target}
@@ -436,6 +471,7 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             onPass={() => ctrl.passRound()}
             onCancelPass={room.status === 'playing' ? () => ctrl.cancelPass() : undefined}
           />
+          )}
 
           {/* 対戦中でもすぐ送れる1行チャット（ログは左下のCOMMSボタンから） */}
           <div className="mt-3 border-t border-white/10 pt-2.5">
@@ -749,13 +785,26 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
             )}
 
             <div className="mt-5">
-              <div className="label mb-2 text-center text-cyan-200/80">SOLUTIONS</div>
-              <SolutionsList
-                solutions={allSols}
-                target={r.target}
-                playerNamesByKey={playerNamesByKey}
-                myKey={myKey}
-              />
+              <div className="label mb-2 text-center text-cyan-200/80">
+                {isFactor ? 'ANSWER // 素因数分解' : 'SOLUTIONS'}
+              </div>
+              {isFactor ? (
+                <div className="border-l-2 border-fuchsia-400/70 bg-fuchsia-500/8 px-3 py-2 text-center">
+                  <span className="num text-[16px] font-black text-amber-100 sm:text-[18px]">
+                    {r.factorNumber ?? r.target} = {factorFormula(factorAnswer)}
+                  </span>
+                  <p className="jp mt-1 text-[10px] text-slate-400">
+                    素因数分解の答えは1通りだけです（順番は問いません）
+                  </p>
+                </div>
+              ) : (
+                <SolutionsList
+                  solutions={allSols}
+                  target={r.target}
+                  playerNamesByKey={playerNamesByKey}
+                  myKey={myKey}
+                />
+              )}
             </div>
 
             <div className="mt-6 flex flex-wrap justify-center gap-2">

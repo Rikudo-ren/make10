@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePuzzleAsync, type Puzzle } from '../lib/puzzle';
 import { DEFAULT_SETTINGS, type Settings } from '../lib/types';
 import { PlayArea } from './PlayArea';
-import { Button, Card, Field, Toggle } from './ui';
+import { FactorArea } from './FactorArea';
+import {
+  FACTOR_PRIME_OPTIONS,
+  factorGenerationIssue,
+  factorFormula,
+  generateFactorPuzzle,
+  type FactorPuzzle,
+} from '../lib/factor';
+import { Button, Card, Chip, Field, Toggle } from './ui';
 import { IconArrowRight, IconCheck, IconGear, IconReset, IconSpark } from './icons';
 import { playSe } from '../lib/audio';
 import { cn } from '../utils/cn';
@@ -10,6 +18,7 @@ import { cn } from '../utils/cn';
 export function SoloScreen({ onExit }: { onExit: () => void }) {
   const [settings, setSettings] = useState<Settings>({ ...DEFAULT_SETTINGS, unlimitedTime: true });
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
+  const [factorPuzzle, setFactorPuzzle] = useState<FactorPuzzle | null>(null);
   const [showSettings, setShowSettings] = useState(true);
   const [startedAt, setStartedAt] = useState(Date.now());
   const [cleared, setCleared] = useState<{ ms: number; formula: string; key: string } | null>(null);
@@ -25,12 +34,45 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     setLoading(true);
     // 一瞬次の問題が見えないよう、先にクリアしてから生成
     setPuzzle(null);
+    setFactorPuzzle(null);
     setCleared(null);
     setError(null);
     setProgress({ attempts: 0, elapsedMs: 0 });
-    // 生成はタイムスライス方式なので、重い設定でも画面は固まらない
+    // 素因数分解は同期生成（軽いのでスピナーなしで即出す）
+    if (s.gameMode === 'factor') {
+      const fp = generateFactorPuzzle({
+        digits: s.factorDigits,
+        minPrime: s.factorMinPrime,
+        maxPrime: s.factorMaxPrime,
+        countMin: s.factorCountMin,
+        countMax: s.factorCountMax,
+      });
+      setLoading(false);
+      setProgress(null);
+      if (!fp) {
+        const issue = factorGenerationIssue({
+          digits: s.factorDigits,
+          minPrime: s.factorMinPrime,
+          maxPrime: s.factorMaxPrime,
+          countMin: s.factorCountMin,
+          countMax: s.factorCountMax,
+        });
+        setError(
+          issue
+            ? `この設定では合成数を作れません: ${issue}`
+            : 'この設定では条件に合う合成数を作れませんでした。桁数・下限素数・上限素数・素因数の個数を見直してください。',
+        );
+        return;
+      }
+      setFactorPuzzle(fp);
+      setStartedAt(Date.now());
+      setSolPage(0);
+      setPuzzleSeq((n) => n + 1);
+      return;
+    }
+    // 生成はタイムスライス方式なので、重い設定でも画面は固まらない。
+    // 時間で勝手に打ち切らず、見つかるか「探索をあきらめる」まで続ける
     const p = await generatePuzzleAsync(s, {
-      deadlineMs: 3000,
       onProgress: (g) => {
         if (seqRef.current === mySeq) setProgress({ attempts: g.attempts, elapsedMs: g.elapsedMs });
       },
@@ -41,7 +83,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     setProgress(null);
     if (!p) {
       setError(
-        'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値をゆるめてみてください。',
+        'この設定では解ける問題が見つかりませんでした。数字の範囲・演算子・目標値をゆるめてみてください。',
       );
       return;
     }
@@ -50,6 +92,15 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     setSolPage(0);
     setPuzzleSeq((n) => n + 1);
   }, []);
+
+  /** 探索を途中であきらめる（進行中の生成は seq 不一致で破棄される） */
+  const cancelGeneration = () => {
+    seqRef.current++;
+    setLoading(false);
+    setProgress(null);
+    setShowSettings(true);
+    setError('問題の探索をあきらめました。設定を見直して、もう一度お試しください。');
+  };
 
   useEffect(() => {
     void newPuzzle(settings);
@@ -99,6 +150,24 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
 
       {showSettings && (
         <Card className="mb-3.5">
+          <div className="label jp mb-2 tracking-[.18em] text-cyan-200/70">ゲームの種類</div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Chip
+              disabled={loading}
+              active={settings.gameMode === 'make10'}
+              onClick={() => setSettings((s) => ({ ...s, gameMode: 'make10' }))}
+            >
+              メイクテン
+            </Chip>
+            <Chip
+              disabled={loading}
+              active={settings.gameMode === 'factor'}
+              onClick={() => setSettings((s) => ({ ...s, gameMode: 'factor' }))}
+            >
+              素因数分解
+            </Chip>
+          </div>
+          {settings.gameMode === 'make10' ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Field label="数字の個数">
               <select
@@ -148,14 +217,134 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
               />
             </Field>
           </div>
+          ) : (
+          <>
+            <Field label="進め方（スタイル）">
+              <div className="flex flex-wrap gap-2">
+                <Chip
+                  active={settings.factorStyle === 'accumulate'}
+                  onClick={() => setSettings((s) => ({ ...s, factorStyle: 'accumulate' }))}
+                >
+                  積み上げ式（残りが見えない）
+                </Chip>
+                <Chip
+                  active={settings.factorStyle === 'divide'}
+                  onClick={() => setSettings((s) => ({ ...s, factorStyle: 'divide' }))}
+                >
+                  割り算式（目標が割れていく）
+                </Chip>
+              </div>
+            </Field>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field label="分解する数の桁数">
+                <select
+                  className="input"
+                  value={settings.factorDigits}
+                  onChange={(e) =>
+                    setSettings((s) => ({ ...s, factorDigits: Number(e.target.value) }))
+                  }
+                >
+                  {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                    <option key={n} value={n}>
+                      {n}桁
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="下限素数（素因数の最小）">
+                <select
+                  className="input"
+                  value={settings.factorMinPrime}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setSettings((s) => ({
+                      ...s,
+                      factorMinPrime: v,
+                      factorMaxPrime: Math.max(v, s.factorMaxPrime),
+                    }));
+                  }}
+                >
+                  {FACTOR_PRIME_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p} 以上
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="上限素数（素因数の最大）">
+                <select
+                  className="input"
+                  value={settings.factorMaxPrime}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setSettings((s) => ({
+                      ...s,
+                      factorMaxPrime: Math.max(s.factorMinPrime, v),
+                    }));
+                  }}
+                >
+                  {FACTOR_PRIME_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p} 以下
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="素因数の個数（最小）">
+                <select
+                  className="input"
+                  value={settings.factorCountMin}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setSettings((s) => ({
+                      ...s,
+                      factorCountMin: v,
+                      factorCountMax: Math.max(v, s.factorCountMax),
+                    }));
+                  }}
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n}個
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="素因数の個数（最大）">
+                <select
+                  className="input"
+                  value={settings.factorCountMax}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setSettings((s) => ({
+                      ...s,
+                      factorCountMax: Math.max(s.factorCountMin, v),
+                    }));
+                  }}
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n}個
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <p className="jp mt-3 text-[11px] leading-relaxed text-slate-400">
+              素因数の下限・上限は2〜997のすべての素数から選べます。組み合わせによっては作れない場合があります。
+            </p>
+          </>
+          )}
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {settings.gameMode === 'make10' && (
             <Toggle
               label="途中結果を整数のみに制限"
               checked={settings.integerOnly}
               onChange={(v) => setSettings((s) => ({ ...s, integerOnly: v }))}
             />
+            )}
             <Toggle
-              label="解の通り数を表示"
+              label={settings.gameMode === 'factor' ? '素因数の個数を表示' : '解の通り数を表示'}
               checked={settings.showDifficulty}
               onChange={(v) => setSettings((s) => ({ ...s, showDifficulty: v }))}
             />
@@ -181,43 +370,65 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
           <div className="flex flex-col items-center gap-3">
             <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-cyan-300/20 border-t-cyan-300" />
             <span className="label text-cyan-200/80">GENERATING PUZZLE</span>
+            <span className="jp text-[11px] text-slate-400">
+              見つかるまで探索を続けます（時間で勝手に打ち切りません）
+            </span>
             {progress && (
               <span className="num text-[10px] tabular-nums text-slate-500">
                 {(progress.elapsedMs / 1000).toFixed(1)}s / {progress.attempts} trials
                 {progress.elapsedMs > 1200 && ' // 重い設定のため時間がかかっています'}
               </span>
             )}
+            <Button variant="ghost" className="px-4 py-2.5 text-[11px]" onClick={cancelGeneration}>
+              探索をあきらめる
+            </Button>
           </div>
         </Card>
       )}
 
-      {puzzle && !loading && (
+      {(puzzle || factorPuzzle) && !loading && (
         <>
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="chip text-cyan-200/90">
                 PUZZLE <b className="num ml-1 text-white">{String(puzzleSeq).padStart(2, '0')}</b>
               </span>
-              {settings.showDifficulty && (
-                <span className="chip border-fuchsia-400/40 bg-fuchsia-500/10 text-fuchsia-200">
-                  SOLUTIONS {puzzle.solutionCount}
-                </span>
-              )}
+              {settings.showDifficulty &&
+                (puzzle ? (
+                  <span className="chip border-fuchsia-400/40 bg-fuchsia-500/10 text-fuchsia-200">
+                    SOLUTIONS {puzzle.solutionCount}
+                  </span>
+                ) : factorPuzzle ? (
+                  <span className="chip border-fuchsia-400/40 bg-fuchsia-500/10 text-fuchsia-200">
+                    素因数 {factorPuzzle.factors.length}個
+                  </span>
+                ) : null)}
             </div>
             <span className="jp text-[10px] text-slate-500">オフラインモード</span>
           </div>
 
           <Card>
-            <PlayArea
-              roundKey={`solo-${puzzleSeq}`}
-              numbers={puzzle.numbers}
-              target={puzzle.target}
-              allowedOperators={settings.allowedOperators}
-              integerOnly={settings.integerOnly}
-              penaltyMode={settings.penaltyMode}
-              disabled={!!cleared}
-              onSolved={onSolved}
-            />
+            {puzzle ? (
+              <PlayArea
+                roundKey={`solo-${puzzleSeq}`}
+                numbers={puzzle.numbers}
+                target={puzzle.target}
+                allowedOperators={settings.allowedOperators}
+                integerOnly={settings.integerOnly}
+                penaltyMode={settings.penaltyMode}
+                disabled={!!cleared}
+                onSolved={onSolved}
+              />
+            ) : factorPuzzle ? (
+              <FactorArea
+                value={factorPuzzle.value}
+                factorStyle={settings.factorStyle}
+                penaltyMode={settings.penaltyMode}
+                disabled={!!cleared}
+                roundKey={`solo-${puzzleSeq}`}
+                onSolved={onSolved}
+              />
+            ) : null}
           </Card>
 
           <div className="mt-3.5 flex flex-wrap items-center gap-2">
@@ -243,7 +454,9 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                 <div className="mb-3 border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-center">
                   <div className="label text-emerald-300">CLEAR</div>
                   <div className="num text-[17px] font-black text-emerald-100">
-                    {cleared.formula} = {puzzle.target}
+                    {puzzle
+                      ? `${cleared.formula} = ${puzzle.target}`
+                      : `${factorPuzzle?.value.toLocaleString()} = ${cleared.formula}`}
                   </div>
                   <div className="num mt-1 flex items-center justify-center gap-1.5 text-[12px] font-bold text-emerald-200">
                     <IconCheck size={12} />
@@ -255,7 +468,32 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                   <div className="label text-rose-300">GIVE UP</div>
                 </div>
               )}
-              <div className="label text-cyan-200/80">SOLUTIONS</div>
+              <div className="label text-cyan-200/80">
+                {!puzzle && factorPuzzle ? 'ANSWER // 素因数分解' : 'SOLUTIONS'}
+              </div>
+              {!puzzle && factorPuzzle ? (
+                <>
+                  <ul className="mt-2 space-y-1">
+                    <li
+                      className={cn(
+                        'num border-l-2 px-3 py-1.5 text-[13px] font-bold',
+                        cleared?.formula
+                          ? 'border-emerald-400/80 bg-emerald-500/10 text-emerald-100'
+                          : 'border-white/12 bg-white/[0.03] text-amber-200',
+                      )}
+                    >
+                      {factorPuzzle.value.toLocaleString()} = {factorFormula(factorPuzzle.factors)}
+                      {!!cleared?.formula && (
+                        <span className="jp ml-2 text-[10px] text-emerald-300">あなたの解答</span>
+                      )}
+                    </li>
+                  </ul>
+                  <p className="num mt-2 text-center text-[10px] tracking-[.2em] text-slate-500">
+                    TOTAL 1
+                  </p>
+                </>
+              ) : (
+                <>
               <ul className="mt-2 space-y-1">
                 {currentSols.map((s) => {
                   // 表示文字列ではなく等価判定キーで照合する
@@ -270,7 +508,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                           : 'border-white/12 bg-white/[0.03] text-amber-200',
                       )}
                     >
-                      {s.formula} = {puzzle.target}
+                      {s.formula} = {puzzle?.target}
                       {isMyAnswer && (
                         <span className="jp ml-2 text-[10px] text-emerald-300">あなたの解答</span>
                       )}
@@ -290,8 +528,10 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                 </div>
               )}
               <p className="num mt-2 text-center text-[10px] tracking-[.2em] text-slate-500">
-                TOTAL {puzzle.solutionCount}
+                TOTAL {puzzle?.solutionCount}
               </p>
+                </>
+              )}
             </Card>
           )}
         </>

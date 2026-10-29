@@ -26,11 +26,10 @@ import {
 } from './roomCleanup';
 import { DEFAULT_SETTINGS, normalizeSettings, type RoomData, type Settings } from './types';
 import { assignTeams, clampTeamCount, isValidTeamId, pickJoinTeamId } from './teams';
+import { factorGenerationIssue, generateFactorPuzzle } from './factor';
 
 export { EMPTY_ROOM_GRACE_MS, ROOM_TTL_MS, SWEEP_INTERVAL_MS } from './roomCleanup';
 
-/** 問題生成の締切(ms)。これを超えたら諦めてエラーを出す（UIは固まらない） */
-const GENERATE_DEADLINE_MS = 3000;
 /** チャットの保持件数（これを超えた古いメッセージは自動削除される） */
 export const CHAT_KEEP = 60;
 /** チャット1件の最大文字数 */
@@ -117,6 +116,8 @@ export function useRoom() {
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
   const finalizedRef = useRef<Set<number>>(new Set());
   const startingRef = useRef(false);
+  /** GMが「探索をあきらめる」を押したかどうか（生成ループ側が参照する） */
+  const generationCancelRef = useRef(false);
   const lastStateKeyRef = useRef('');
 
   roomRef.current = room;
@@ -726,6 +727,23 @@ export function useRoom() {
   }, []);
 
   /**
+   * GMが問題生成の探索を途中であきらめる。
+   * 自分が生成中なら生成ループへ中止を伝え（片付けは startRound の finally が行う）、
+   * 生成中でないのに preparingAt だけ残っている場合はそれを消して復旧する。
+   */
+  const cancelGeneration = useCallback(async () => {
+    generationCancelRef.current = true;
+    if (startingRef.current) return;
+    const code = roomIdRef.current;
+    if (!code) return;
+    try {
+      await remove(ref(db, `rooms/${code}/preparingAt`));
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  /**
    * 出題を生成して配信（GMのみ）。
    * 生成は非同期・タイムスライスなので、重い設定でもブラウザが固まらない。
    * 生成中は rooms/{code}/preparingAt を立てて、全員に「準備中」を表示する。
@@ -736,20 +754,72 @@ export function useRoom() {
       if (!code) return;
       if (startingRef.current) return;
       startingRef.current = true;
+      generationCancelRef.current = false;
       setError(null);
-      setGenProgress({ attempts: 0, elapsedMs: 0, deadlineMs: GENERATE_DEADLINE_MS });
+      setGenProgress({ attempts: 0, elapsedMs: 0, deadlineMs: 0 });
       try {
         await set(ref(db, `rooms/${code}/preparingAt`), serverTimestamp());
-        const puzzle = await generatePuzzleAsync(settings, {
-          deadlineMs: GENERATE_DEADLINE_MS,
-          avoid,
-          onProgress: (p) => setGenProgress(p),
-        });
-        if (!puzzle) {
-          setError(
-            'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値を見直してください（ラウンドは開始していません）。',
-          );
-          return;
+        // ゲーム種別で出題を分岐する（同じ部屋・同じ進行管理のまま中身だけ変える）
+        let roundFields: Record<string, unknown>;
+        if (settings.gameMode === 'factor') {
+          const fp = generateFactorPuzzle({
+            digits: settings.factorDigits,
+            minPrime: settings.factorMinPrime,
+            maxPrime: settings.factorMaxPrime,
+            countMin: settings.factorCountMin,
+            countMax: settings.factorCountMax,
+          });
+          if (!fp) {
+            const issue = factorGenerationIssue({
+              digits: settings.factorDigits,
+              minPrime: settings.factorMinPrime,
+              maxPrime: settings.factorMaxPrime,
+              countMin: settings.factorCountMin,
+              countMax: settings.factorCountMax,
+            });
+            setError(
+              issue
+                ? `この設定では合成数を作れません: ${issue}（ラウンドは開始していません）。`
+                : 'この設定では条件に合う合成数を作れませんでした。桁数・下限素数・上限素数・素因数の個数を見直してください（ラウンドは開始していません）。',
+            );
+            return;
+          }
+          roundFields = {
+            gameMode: 'factor',
+            numbers: [fp.value],
+            target: fp.value,
+            factorNumber: fp.value,
+            factorAnswer: fp.factors,
+            factorStyle: settings.factorStyle,
+            solutions: [],
+            solutionCount: 1,
+            difficultyLabel: settings.showDifficulty ? `素因数 ${fp.factors.length}個` : null,
+          };
+        } else {
+          // 時間で勝手に打ち切らず、見つかるかGMが中止するまで探索を続ける
+          const puzzle = await generatePuzzleAsync(settings, {
+            avoid,
+            onProgress: (p) => setGenProgress(p),
+            shouldCancel: () => generationCancelRef.current,
+          });
+          if (generationCancelRef.current) return; // GMが探索をあきらめた（片付けはfinally）
+          if (!puzzle) {
+            setError(
+              'この設定では解ける問題が見つかりませんでした。数字の範囲・演算子・目標値を見直してください（ラウンドは開始していません）。',
+            );
+            return;
+          }
+          roundFields = {
+            gameMode: 'make10',
+            numbers: puzzle.numbers,
+            target: puzzle.target,
+            factorNumber: null,
+            factorAnswer: null,
+            factorStyle: null,
+            solutions: puzzle.solutions,
+            solutionCount: puzzle.solutionCount,
+            difficultyLabel: settings.showDifficulty ? puzzle.difficultyLabel : null,
+          };
         }
         // status と currentRound を同時更新し、問題切り替え時のチラ見えを防ぐ。
         // startedAt がサーバー時刻に解決されるまでクライアント側でカウントダウンマスクをかける。
@@ -759,16 +829,12 @@ export function useRoom() {
           currentRound: {
             roundIndex: globalIndex,
             matchStartIndex,
-            numbers: puzzle.numbers,
-            target: puzzle.target,
             startedAt: serverTimestamp(),
             winnerUid: null,
             outcome: null,
             results: null,
             endedAt: null,
-            solutions: puzzle.solutions,
-            solutionCount: puzzle.solutionCount,
-            difficultyLabel: settings.showDifficulty ? puzzle.difficultyLabel : null,
+            ...roundFields,
           },
         });
       } catch (e: any) {
@@ -1215,6 +1281,7 @@ export function useRoom() {
     backToLobby,
     forcePassRemaining,
     forceEndToLobby,
+    cancelGeneration,
     sendChat,
     clearChat,
     genProgress,
