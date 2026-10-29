@@ -225,13 +225,13 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                   active={settings.factorStyle === 'accumulate'}
                   onClick={() => setSettings((s) => ({ ...s, factorStyle: 'accumulate' }))}
                 >
-                  積み上げ式（残りが見えない）
+                  残りが見えない
                 </Chip>
                 <Chip
                   active={settings.factorStyle === 'divide'}
                   onClick={() => setSettings((s) => ({ ...s, factorStyle: 'divide' }))}
                 >
-                  割り算式（目標が割れていく）
+                  割り算（目標が割れていく）
                 </Chip>
               </div>
             </Field>
