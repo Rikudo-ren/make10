@@ -55,6 +55,8 @@ export interface TeamPlayerInput {
   teamId?: number | null;
   /** 退出済み（対戦の流れからは外れるが、結果・成績表示には残す） */
   left?: boolean;
+  /** この試合に参加した印（試合開始時の roundIndex）。試合中に部屋にいた証跡 */
+  matchStart?: number;
 }
 
 /** roundIndex -> そのラウンドの確定結果（RoundData 相当の最小形） */
@@ -265,7 +267,8 @@ export function computeIndividualStandings(args: {
 
 /**
  * 成績表示に載せる「この試合の参加者」を返す。
- * 在室中の人は全員、退出した人は「この試合で確定結果が残っている場合だけ」残す。
+ * 在室中の人は全員、退出した人は「この試合で確定結果が残っている」か
+ * 「試合開始時／途中参加時に参加印（matchStart）が押されている」場合に残す。
  * （抜けた人が結果画面やスコア集計から消えてしまわないようにするため）
  */
 export function filterMatchParticipants<T extends TeamPlayerInput>(
@@ -281,7 +284,7 @@ export function filterMatchParticipants<T extends TeamPlayerInput>(
       for (const uid of Object.keys(round.results ?? {})) played.add(uid);
     }
   }
-  return players.filter((p) => !p.left || played.has(p.uid));
+  return players.filter((p) => !p.left || played.has(p.uid) || p.matchStart === matchStartIndex);
 }
 
 /** 優勝チーム一覧。primaryValue が同値で並んだ場合は複数返る（= 引き分け） */

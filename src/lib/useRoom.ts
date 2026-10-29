@@ -536,6 +536,15 @@ export function useRoom() {
           // 再参加したら退出フラグを外す（得点・チームは上で復元済み）
           left: null,
         };
+        // 試合の途中で入ってきたら「この試合の参加者」として記録する
+        // （1問も解かずに抜けても最終リザルトに載せるため）
+        const currentMatchStart = (data.currentRound as any)?.matchStartIndex;
+        if (
+          (data.status === 'playing' || data.status === 'judging') &&
+          typeof currentMatchStart === 'number'
+        ) {
+          playerUpdates.matchStart = currentMatchStart;
+        }
         // 得点は保存済みのものを絶対に上書きしない（抜けた人が戻ると復活する）。
         // まだ得点を持っていない新規参加だけ 0 で初期化する。
         if (typeof existing?.score !== 'number') playerUpdates.score = 0;
@@ -877,6 +886,16 @@ export function useRoom() {
     for (const id of ids) {
       await set(ref(db, `rooms/${code}/players/${id}/score`), 0);
     }
+    // この試合の参加者として記録する（最終リザルトに載せるため）。
+    // 退出済みの人には押さない（試合が始まる前に抜けた人は対象外）。
+    const stamp: Record<string, number> = {};
+    for (const id of ids) {
+      const v = data.players?.[id];
+      if (v && typeof v.name === 'string' && v.name.length > 0 && v.left !== true) {
+        stamp[`rooms/${code}/players/${id}/matchStart`] = startIndex;
+      }
+    }
+    if (Object.keys(stamp).length > 0) await update(ref(db), stamp);
     // チーム分け: バランス/ランダムは開始時に確定、手動はロビーの所属を引き継ぎ
     // 未所属だけ人数の少ないチームへ補充する。個人戦なら以前の所属を取り除く。
     // ※ バランス分けはリセット前のスコア（前回の結果）を使うので、得点リセットより

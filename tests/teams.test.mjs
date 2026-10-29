@@ -233,3 +233,20 @@ test('退出者: チーム合計・平均と個人順位にそのまま含まれ
   assert.equal(rows.find((r) => r.uid === 'b').left, true);
   assert.equal(rows.find((r) => r.uid === 'a').left, false);
 });
+
+
+test('退出者: 試合中に部屋にいた印（matchStart）があれば結果がなくても残る', () => {
+  const roster = [
+    { uid: 'a', name: 'a', score: 30, teamId: 0 },
+    // 試合開始時にいて、1問も解かずに抜けた人 → 最終リザルトに載る
+    { uid: 'e', name: 'e', score: 0, teamId: 0, left: true, matchStart: 5 },
+    // 途中参加して、解かずに抜けた人 → 載る
+    { uid: 'f', name: 'f', score: 0, teamId: 1, left: true, matchStart: 5 },
+    // 前の試合で抜けたきりの人 → 今の試合のリザルトには載らない
+    { uid: 'g', name: 'g', score: 0, teamId: 1, left: true, matchStart: 2 },
+    // 試合が始まる前に抜けた人（印なし・結果なし） → 載らない
+    { uid: 'h', name: 'h', score: 0, teamId: 1, left: true },
+  ];
+  const kept = filterMatchParticipants(roster, { 6: { roundIndex: 6, results: { a: { rank: 1 } } } }, 5);
+  assert.deepEqual(kept.map((pl) => pl.uid), ['a', 'e', 'f']);
+});
