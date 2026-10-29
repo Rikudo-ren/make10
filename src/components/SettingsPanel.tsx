@@ -52,7 +52,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
                   value={s.factorDigits}
                   onChange={(e) => onChange({ factorDigits: Number(e.target.value) })}
                 >
-                  {[2, 3, 4, 5].map((n) => (
+                  {[2, 3, 4, 5, 6, 7, 8].map((n) => (
                     <option key={n} value={n}>
                       {n}桁
                     </option>

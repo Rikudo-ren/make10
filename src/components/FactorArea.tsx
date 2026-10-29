@@ -80,6 +80,7 @@ export function FactorArea({
     if (!passed) resumeRequestedRef.current = false;
   }, [passed]);
 
+  const over = product > value;
   const lockRemain = Math.max(0, lockUntil - now);
   const locked = !!disabled || !!isCountdown || lockRemain > 0;
   const canRequestPass = !!onPass && !passed && !disabled && !isCountdown;
@@ -107,9 +108,7 @@ export function FactorArea({
       fail(
         result.reason === 'not-prime'
           ? `${text || 'その数'}は素数ではありません（まだ割れる数です）`
-          : result.reason === 'exceeds'
-            ? `積が目標の ${value} を超えてしまいます`
-            : FACTOR_GUESS_ERROR_TEXT[result.reason],
+          : FACTOR_GUESS_ERROR_TEXT[result.reason],
       );
       return;
     }
@@ -164,7 +163,7 @@ export function FactorArea({
           <div className="flex shrink-0 flex-col items-center border border-solar/40 bg-solar/8 px-3.5 py-1.5">
             <span className="label text-[8px] text-amber-200/70">目標の数</span>
             <span className="num text-[26px] leading-none font-black text-amber-300">
-              {isCountdown ? '？？？' : value}
+              {isCountdown ? '？？？' : value.toLocaleString()}
             </span>
           </div>
         </div>
@@ -187,7 +186,18 @@ export function FactorArea({
                 </span>
               ))}
               <span className="text-slate-400">=</span>
-              <span className={product === value ? 'text-emerald-300' : 'text-white'}>{product}</span>
+              <span
+                className={
+                  over ? 'text-rose-400' : product === value ? 'text-emerald-300' : 'text-white'
+                }
+              >
+                {product.toLocaleString()}
+              </span>
+              {over && (
+                <span className="jp animate-pulse text-[11px] font-black text-rose-400">
+                  目標オーバー
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -212,6 +222,13 @@ export function FactorArea({
             value={input}
             disabled={locked}
             onChange={(e) => setInput(normalizeInput(e.target.value))}
+            onKeyDown={(e) => {
+              // 入力が空のときの Backspace は、直近に積んだ素数を1つ取り消す
+              if (e.key === 'Backspace' && input === '' && factors.length > 0) {
+                e.preventDefault();
+                undo();
+              }
+            }}
           />
           <button
             type="submit"
@@ -229,10 +246,15 @@ export function FactorArea({
         </p>
       ) : error ? (
         <p className="jp text-[11px] font-bold text-rose-300">{error}</p>
+      ) : over ? (
+        <p className="jp text-[11px] font-bold text-rose-300">
+          積が目標の {value.toLocaleString()}{' '}
+          を超えています。Backspaceで直近の素数を1つ消すか、「最初から」で全リセットしてください。
+        </p>
       ) : (
         <p className="jp text-[11px] text-slate-500">
           素数を Enter するたびに積へ積み上がります（例: 目標360なら 2↵ 2↵ 2↵ 3↵ 3↵ 5↵ で 2×2×2×3×3×5=360）。
-          途中で違う素数を積んだら「1つ戻す」でやり直せます。同じ素数を何度も使ってOK。
+          積が目標を超えたら赤く表示されます。Backspace（または「1つ戻す」）で直近の素数を1つ消せます。同じ素数を何度も使ってOK。
         </p>
       )}
 
@@ -244,7 +266,7 @@ export function FactorArea({
           disabled={locked || factors.length === 0}
           className="gap-1.5 px-3 py-2.5 text-[10px]"
         >
-          <IconUndo size={13} /> 1つ戻す
+          <IconUndo size={13} /> 1つ戻す（⌫）
         </Button>
         <div className="grow" />
         <Button

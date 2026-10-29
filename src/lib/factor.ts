@@ -30,7 +30,7 @@ export function snapFactorMaxPrime(n: unknown): number {
 export function clampFactorDigits(n: unknown): number {
   const v = Math.floor(Number(n));
   if (!Number.isFinite(v)) return 3;
-  return Math.min(5, Math.max(2, v));
+  return Math.min(8, Math.max(2, v));
 }
 
 export function clampFactorCount(n: unknown, fallback = 3): number {
@@ -71,13 +71,12 @@ export function factorize(n: number): number[] {
   return out;
 }
 
-export type FactorGuessError = 'not-integer' | 'too-small' | 'not-prime' | 'exceeds';
+export type FactorGuessError = 'not-integer' | 'too-small' | 'not-prime';
 
 export const FACTOR_GUESS_ERROR_TEXT: Record<FactorGuessError, string> = {
   'not-integer': '整数を入力してください',
   'too-small': '2以上の素数を入力してください',
   'not-prime': '素数ではありません（まだ割れる数です）',
-  exceeds: '積が目標の数を超えてしまいます',
 };
 
 /** ここまで入力した素数の積 */
@@ -90,8 +89,9 @@ export function productOf(factors: number[]): number {
  * 「問題を割っていく」のではなく「積が目標に一致するか」だけを見るので、
  * 残りの商は判定にも表示にも使わない。
  * - 素数でない数: 受理しない
- * - 積が目標を超える: 受理しない
- * - それ以外の素数: 積み上げる（目標の因数でない素数を入れたら、戻す操作でやり直す）
+ * - 素数なら必ず積み上げる。目標の因数でない素数でも指摘はしないし、
+ *   積が目標を超えても受理する（超えたことは UI 側で積を赤く表示して知らせる）。
+ *   やり直しは Backspace / 1つ戻す / 全リセットで行う。
  */
 export function checkFactorStep(args: {
   target: number;
@@ -102,9 +102,7 @@ export function checkFactorStep(args: {
   if (typeof v !== 'number' || !Number.isInteger(v)) return { ok: false, reason: 'not-integer' };
   if (v < 2) return { ok: false, reason: 'too-small' };
   if (!isPrime(v)) return { ok: false, reason: 'not-prime' };
-  const nextProduct = args.currentProduct * v;
-  if (nextProduct > args.target) return { ok: false, reason: 'exceeds' };
-  return { ok: true, value: v, nextProduct };
+  return { ok: true, value: v, nextProduct: args.currentProduct * v };
 }
 
 /** 解答の表示文字列（小さい順に × でつなぐ）と照合キー */

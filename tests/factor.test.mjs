@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   checkFactorStep,
+  clampFactorDigits,
   factorize,
   generateFactorPuzzle,
   isPrime,
@@ -19,7 +20,7 @@ test('素数判定と素因数分解', () => {
   assert.deepEqual(primesBetween(5, 13), [5, 7, 11, 13]);
 });
 
-test('積み上げ判定: 素数だけが積まれ、目標を超える入力は受理しない', () => {
+test('積み上げ判定: 素数だけが積まれ、目標を超えても受理する', () => {
   // 24 に対して 2 を積む → 積は2
   assert.deepEqual(checkFactorStep({ target: 24, currentProduct: 1, value: 2 }), {
     ok: true,
@@ -30,8 +31,10 @@ test('積み上げ判定: 素数だけが積まれ、目標を超える入力は
   assert.equal(checkFactorStep({ target: 24, currentProduct: 1, value: 5 }).ok, true);
   // 合成数は受理しない
   assert.equal(checkFactorStep({ target: 24, currentProduct: 2, value: 4 }).reason, 'not-prime');
-  // 積が目標を超える入力は受理しない
-  assert.equal(checkFactorStep({ target: 24, currentProduct: 12, value: 3 }).reason, 'exceeds');
+  // 積が目標を超える入力も受理する（超えたことはUI側で赤表示にする）
+  const overStep = checkFactorStep({ target: 24, currentProduct: 12, value: 3 });
+  assert.equal(overStep.ok, true);
+  assert.equal(overStep.nextProduct, 36);
   // ぴったり一致で完了できる
   const last = checkFactorStep({ target: 24, currentProduct: 12, value: 2 });
   assert.equal(last.ok, true);
@@ -61,6 +64,33 @@ test('生成: 桁数・下限〜上限・素因数の個数を満たす合成数
     assert.equal(productOf(p.factors), p.value);
     assert.deepEqual(factorize(p.value), p.factors);
   }
+});
+
+test('桁数は2〜8に丸める（8桁モードあり）', () => {
+  assert.equal(clampFactorDigits(1), 2);
+  assert.equal(clampFactorDigits(8), 8);
+  assert.equal(clampFactorDigits(99), 8);
+});
+
+test('生成: 8桁の合成数も作れる', () => {
+  let i = 7;
+  const rng = () => {
+    i = (i * 1103515245 + 12345) % 2147483648;
+    return i / 2147483648;
+  };
+  const p = generateFactorPuzzle({
+    digits: 8,
+    minPrime: 2,
+    maxPrime: 47,
+    countMin: 6,
+    countMax: 10,
+    rng,
+    maxAttempts: 200_000,
+  });
+  assert.ok(p, '8桁の問題が生成できること');
+  assert.ok(p.value >= 10_000_000 && p.value <= 99_999_999, `value=${p.value}`);
+  assert.equal(productOf(p.factors), p.value);
+  assert.deepEqual(factorize(p.value), p.factors);
 });
 
 test('生成: 作れない組み合わせは null（例: 5桁・素因数2個・上限5）', () => {
