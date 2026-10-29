@@ -70,7 +70,8 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
                   value={s.factorDigits}
                   onChange={(e) => onChange({ factorDigits: Number(e.target.value) })}
                 >
-                  {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                  <option value={0}>指定なし</option>
+                  {Array.from({ length: 14 }, (_, i) => i + 2).map((n) => (
                     <option key={n} value={n}>
                       {n}桁
                     </option>
@@ -119,13 +120,19 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
                   className={inputCls}
                   disabled={dis}
                   value={s.factorCountMin}
-                  onChange={(e) =>
-                    onChange({
-                      factorCountMin: Number(e.target.value),
-                      factorCountMax: Math.max(Number(e.target.value), s.factorCountMax),
-                    })
-                  }
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    onChange(
+                      v === 0
+                        ? { factorCountMin: 0, factorCountMax: 0 }
+                        : {
+                            factorCountMin: v,
+                            factorCountMax: Math.max(v, s.factorCountMax),
+                          },
+                    );
+                  }}
                 >
+                  <option value={0}>指定なし</option>
                   {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <option key={n} value={n}>
                       {n}個
@@ -136,14 +143,18 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
               <Field label="素因数の個数（最大）">
                 <select
                   className={inputCls}
-                  disabled={dis}
-                  value={s.factorCountMax}
-                  onChange={(e) =>
-                    onChange({
-                      factorCountMax: Math.max(s.factorCountMin, Number(e.target.value)),
-                    })
-                  }
+                  value={s.factorCountMin === 0 ? 0 : s.factorCountMax}
+                  disabled={dis || s.factorCountMin === 0}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    onChange(
+                      v === 0
+                        ? { factorCountMin: 0, factorCountMax: 0 }
+                        : { factorCountMax: Math.max(s.factorCountMin, v) },
+                    );
+                  }}
                 >
+                  <option value={0}>指定なし</option>
                   {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <option key={n} value={n}>
                       {n}個
@@ -157,6 +168,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
               「残りが見えない」は式の合計だけが見える難しめ、「割り算」は目標が割れていく易しめの進め方です。
               素因数は「下限素数〜上限素数」の範囲のものだけが現れ、個数は最小〜最大の範囲で毎回変わります。
               下限・上限は2〜997のすべての素数（3桁の素数まで）から選べます。
+              桁数と素因数の個数は「指定なし」も選べて、その場合は指定した側の条件に合わせて出題されます。
               組み合わせによっては作れない場合があり（例: 5桁・素因数2個・上限5）、
               そのときは開始時にエラーになるので桁数・下限・上限・個数を見直してください。
             </p>

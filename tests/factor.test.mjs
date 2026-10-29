@@ -120,10 +120,11 @@ test('生成: 桁数・下限〜上限・素因数の個数を満たす合成数
   }
 });
 
-test('桁数は2〜8に丸める（8桁モードあり）', () => {
+test('桁数は2〜15に丸める（8桁以上も指定できる）', () => {
   assert.equal(clampFactorDigits(1), 2);
   assert.equal(clampFactorDigits(8), 8);
-  assert.equal(clampFactorDigits(99), 8);
+  assert.equal(clampFactorDigits(15), 15);
+  assert.equal(clampFactorDigits(99), 15);
 });
 
 test('生成: 8桁の合成数も作れる', () => {
@@ -172,6 +173,94 @@ test('不可能な指定は理由を即判定する（例: 3桁・素因数10個
     factorGenerationIssue({ digits: 3, minPrime: 2, maxPrime: 13, countMin: 3, countMax: 4 }),
     null,
   );
+});
+
+test('指定なし: 桁数なし・個数なしでも、指定した側に合う問題ができる', () => {
+  const rngOf = (seed) => {
+    let i = seed;
+    return () => {
+      i = (i * 1103515245 + 12345) % 2147483648;
+      return i / 2147483648;
+    };
+  };
+
+  // 桁数なし＋個数3個固定: 素因数はちょうど3個
+  const byCount = generateFactorPuzzle({
+    digits: 0,
+    minPrime: 2,
+    maxPrime: 13,
+    countMin: 3,
+    countMax: 3,
+    rng: rngOf(3),
+  });
+  assert.ok(byCount);
+  assert.equal(byCount.factors.length, 3);
+  assert.equal(productOf(byCount.factors), byCount.value);
+  assert.deepEqual(factorize(byCount.value), byCount.factors);
+
+  // 桁数3桁＋個数なし: 必ず3桁で、素因数は2個以上
+  const byDigits = generateFactorPuzzle({
+    digits: 3,
+    minPrime: 2,
+    maxPrime: 13,
+    countMin: 0,
+    countMax: 0,
+    rng: rngOf(5),
+  });
+  assert.ok(byDigits);
+  assert.ok(byDigits.value >= 100 && byDigits.value <= 999, `value=${byDigits.value}`);
+  assert.ok(byDigits.factors.length >= 2);
+  assert.equal(productOf(byDigits.factors), byDigits.value);
+
+  // 両方なしでも、素因数2個以上の合成数ができる
+  const both = generateFactorPuzzle({
+    digits: 0,
+    minPrime: 5,
+    maxPrime: 13,
+    countMin: 0,
+    countMax: 0,
+    rng: rngOf(7),
+  });
+  assert.ok(both);
+  assert.ok(both.factors.length >= 2);
+  assert.ok(both.factors.every((f) => f >= 5 && f <= 13));
+  assert.equal(productOf(both.factors), both.value);
+
+  // 桁数なしでも上限8桁を超える指定は理由つきで不可能判定
+  const issue = factorGenerationIssue({
+    digits: 0,
+    minPrime: 997,
+    maxPrime: 997,
+    countMin: 10,
+    countMax: 10,
+  });
+  assert.match(issue ?? '', /15桁を超えます/);
+  // 桁数指定あり＋個数なしは、作れる範囲では理由なし
+  assert.equal(
+    factorGenerationIssue({ digits: 3, minPrime: 2, maxPrime: 13, countMin: 0, countMax: 0 }),
+    null,
+  );
+});
+
+test('生成: 9桁以上の大きな合成数も作れる', () => {
+  let i = 21;
+  const rng = () => {
+    i = (i * 1103515245 + 12345) % 2147483648;
+    return i / 2147483648;
+  };
+  const p = generateFactorPuzzle({
+    digits: 12,
+    minPrime: 101,
+    maxPrime: 997,
+    countMin: 5,
+    countMax: 6,
+    rng,
+    maxAttempts: 20_000,
+  });
+  assert.ok(p, '12桁の問題が生成できること');
+  assert.ok(p.value >= 100_000_000_000 && p.value <= 999_999_999_999, `value=${p.value}`);
+  assert.equal(productOf(p.factors), p.value);
+  assert.deepEqual(factorize(p.value), p.factors);
 });
 
 test('生成: 作れない組み合わせは null（例: 5桁・素因数2個・上限5）', () => {

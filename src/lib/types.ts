@@ -11,13 +11,13 @@ export interface Settings {
   gameMode: FactorGameMode;
   /** 素因数分解: 進め方 'accumulate' 積み上げ式 / 'divide' 割り算式（目標が割れていく） */
   factorStyle: FactorStyle;
-  /** 素因数分解: 分解する数の桁数（2〜8） */
+  /** 素因数分解: 分解する数の桁数（2〜15、0=指定なし） */
   factorDigits: number;
   /** 素因数分解: 素因数の下限（この値以上の素数だけが現れる） */
   factorMinPrime: number;
   /** 素因数分解: 素因数の上限（この値以下の素数だけが現れる） */
   factorMaxPrime: number;
-  /** 素因数分解: 素因数の個数（重複込み）の最小 */
+  /** 素因数分解: 素因数の個数（重複込み）の最小（0=指定なし、その場合最大も0） */
   factorCountMin: number;
   /** 素因数分解: 素因数の個数（重複込み）の最大 */
   factorCountMax: number;
@@ -169,15 +169,21 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
   // 旧バージョンのルーム（チーム戦フィールドなし）でも個人戦として動くよう既定値で補う
   if (!GAME_MODES.includes(s.gameMode)) s.gameMode = 'make10';
   if (s.factorStyle !== 'divide') s.factorStyle = 'accumulate';
-  s.factorDigits = clampFactorDigits(s.factorDigits);
+  s.factorDigits = s.factorDigits === 0 ? 0 : clampFactorDigits(s.factorDigits);
   s.factorMaxPrime = snapFactorMaxPrime(s.factorMaxPrime);
   // 下限が上限を超えていたら上限に合わせる（生成できる素数が無くならないように）
   s.factorMinPrime = Math.min(snapFactorPrime(s.factorMinPrime ?? 2, 2), s.factorMaxPrime);
-  s.factorCountMin = clampFactorCount(s.factorCountMin, DEFAULT_SETTINGS.factorCountMin);
-  s.factorCountMax = Math.max(
-    s.factorCountMin,
-    clampFactorCount(s.factorCountMax, DEFAULT_SETTINGS.factorCountMax),
-  );
+  if (Number.isFinite(s.factorCountMin) && s.factorCountMin <= 0) {
+    // 個数「指定なし」（生成側で2〜10個として扱う）
+    s.factorCountMin = 0;
+    s.factorCountMax = 0;
+  } else {
+    s.factorCountMin = clampFactorCount(s.factorCountMin, DEFAULT_SETTINGS.factorCountMin);
+    s.factorCountMax = Math.max(
+      s.factorCountMin,
+      clampFactorCount(s.factorCountMax, DEFAULT_SETTINGS.factorCountMax),
+    );
+  }
   if (!BATTLE_MODES.includes(s.battleMode)) s.battleMode = 'solo';
   s.teamCount = clampTeamCount(s.teamCount);
   if (!TEAM_ASSIGN_MODES.includes(s.teamAssignMode)) s.teamAssignMode = 'balanced';

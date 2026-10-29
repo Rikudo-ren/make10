@@ -244,7 +244,8 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                     setSettings((s) => ({ ...s, factorDigits: Number(e.target.value) }))
                   }
                 >
-                  {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                  <option value={0}>指定なし</option>
+                  {Array.from({ length: 14 }, (_, i) => i + 2).map((n) => (
                     <option key={n} value={n}>
                       {n}桁
                     </option>
@@ -296,13 +297,18 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
                   value={settings.factorCountMin}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    setSettings((s) => ({
-                      ...s,
-                      factorCountMin: v,
-                      factorCountMax: Math.max(v, s.factorCountMax),
-                    }));
+                    setSettings((s) =>
+                      v === 0
+                        ? { ...s, factorCountMin: 0, factorCountMax: 0 }
+                        : {
+                            ...s,
+                            factorCountMin: v,
+                            factorCountMax: Math.max(v, s.factorCountMax),
+                          },
+                    );
                   }}
                 >
+                  <option value={0}>指定なし</option>
                   {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <option key={n} value={n}>
                       {n}個
@@ -313,15 +319,18 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
               <Field label="素因数の個数（最大）">
                 <select
                   className="input"
-                  value={settings.factorCountMax}
+                  value={settings.factorCountMin === 0 ? 0 : settings.factorCountMax}
+                  disabled={settings.factorCountMin === 0}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    setSettings((s) => ({
-                      ...s,
-                      factorCountMax: Math.max(s.factorCountMin, v),
-                    }));
+                    setSettings((s) =>
+                      v === 0
+                        ? { ...s, factorCountMin: 0, factorCountMax: 0 }
+                        : { ...s, factorCountMax: Math.max(s.factorCountMin, v) },
+                    );
                   }}
                 >
+                  <option value={0}>指定なし</option>
                   {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <option key={n} value={n}>
                       {n}個
@@ -331,7 +340,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
               </Field>
             </div>
             <p className="jp mt-3 text-[11px] leading-relaxed text-slate-400">
-              素因数の下限・上限は2〜997のすべての素数から選べます。組み合わせによっては作れない場合があります。
+              素因数の下限・上限は2〜997のすべての素数から選べます。桁数と素因数の個数は「指定なし」も選べて、その場合は指定した側の条件に合わせて出題されます。組み合わせによっては作れない場合があります。
             </p>
           </>
           )}
