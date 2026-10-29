@@ -89,6 +89,46 @@ export function FactorArea({
     if (!passed) resumeRequestedRef.current = false;
   }, [passed]);
 
+  // 問題開始（カウントダウン終了）直後は入力欄へ自動フォーカスし、
+  // すぐ物理キーボードで打ち始められるようにする
+  useEffect(() => {
+    if (isCountdown || disabled) return;
+    inputRef.current?.focus();
+  }, [value, roundKey, isCountdown, disabled]);
+
+  // 物理キーボード対応: 入力欄以外にフォーカスがあるときでも数字・Backspace・Enterを受け付ける
+  // （チャット欄など他の入力欄で打っているときは奪わない。依存なしで常に最新の状態を参照する）
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (locked || solvedRef.current) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const inOurInput = !!t && t === inputRef.current;
+      if (t && !inOurInput) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) {
+          return;
+        }
+      }
+      if (/^[0-9]$/.test(e.key)) {
+        if (inOurInput) return; // 入力欄自身が処理する
+        e.preventDefault();
+        pressDigit(e.key);
+      } else if (e.key === 'Backspace') {
+        if (inOurInput) return; // 入力欄の onKeyDown（空なら直近の素数を消す）が処理する
+        e.preventDefault();
+        backspace();
+      } else if (e.key === 'Enter') {
+        if (inOurInput) return; // フォーム送信が処理する
+        if (t && t.tagName === 'BUTTON') return; // ボタン上のEnterはボタンの動作を優先
+        e.preventDefault();
+        submit();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   const over = !isDivide && product > value;
   const lockRemain = Math.max(0, lockUntil - now);
   const locked = !!disabled || !!isCountdown || lockRemain > 0;
@@ -201,36 +241,27 @@ export function FactorArea({
 
   return (
     <div className="flex flex-col gap-3.5">
-      {/* 目標と、ここまで積み上げた積だけを表示する（残りは出さない） */}
-      <div className="hud-corner relative overflow-hidden border border-cyan-300/25 bg-gradient-to-b from-cyan-950/40 to-black/60 px-4 py-3.5 sm:px-5">
+      {/* 目標の数を大きく中央に表示し、その下に積み上げた式を出す（残りは出さない） */}
+      <div className="hud-corner relative overflow-hidden border border-cyan-300/25 bg-gradient-to-b from-cyan-950/40 to-black/60 px-4 py-4 sm:px-5">
         <div className="pointer-events-none absolute -right-6 -top-8 h-28 w-28 rounded-full bg-fuchsia-500/15 blur-2xl" />
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="label mb-1 flex items-center gap-1.5 text-cyan-300/60">
-              <span className="text-cyan-300/80">›</span> FACTORIZE // {isDivide ? '割り算' : '積み上げ'}
-            </div>
-            <div className="jp text-[11px] text-slate-400">
-              {isDivide
-                ? '目標の数を素数で割っていって、残りの数を1にしよう'
-                : '素数を1つずつ掛けて、目標の数とぴったり一致させよう'}
-            </div>
+        <div className="relative text-center">
+          <div className="label flex items-center justify-center gap-1.5 text-cyan-300/60">
+            <span className="text-cyan-300/80">›</span> FACTORIZE // {isDivide ? '割り算' : '積み上げ'}
           </div>
-          <div className="flex shrink-0 flex-col items-center border border-solar/40 bg-solar/8 px-3.5 py-1.5">
-            <span className="label text-[8px] text-amber-200/70">
-              {isDivide ? '残りの数' : '目標の数'}
-            </span>
-            <span className="num text-[26px] leading-none font-black text-amber-300">
-              {isCountdown ? '？？？' : (isDivide ? remaining : value).toLocaleString()}
-            </span>
-            {isDivide && !isCountdown && (
-              <span className="jp mt-1 text-[9px] text-amber-200/60">
-                目標 {value.toLocaleString()}
-              </span>
-            )}
+          <div className="label mt-2.5 text-[10px] tracking-[.35em] text-amber-200/70">
+            {isDivide ? '残りの数' : '分解する数'}
+          </div>
+          <div className="num mt-1 text-[56px] leading-none font-black text-amber-300 [text-shadow:0_0_28px_rgba(251,191,36,.35)] sm:text-[72px]">
+            {isCountdown ? '？？？' : (isDivide ? remaining : value).toLocaleString()}
+          </div>
+          <div className="jp mt-2.5 text-[11px] text-slate-400">
+            {isDivide
+              ? `目標の数 ${value.toLocaleString()} を素数で割っていって、残りの数を1にしよう`
+              : '素数を1つずつ掛けて、この数とぴったり一致させよう'}
           </div>
         </div>
 
-        <div className="mt-3 flex min-h-[38px] flex-wrap items-center gap-1.5">
+        <div className="mt-4 flex min-h-[46px] flex-wrap items-center justify-center gap-1.5 border-t border-white/10 pt-3.5">
           {isCountdown ? (
             <span className="jp text-[12px] text-slate-500">カウントダウン中…</span>
           ) : factors.length === 0 ? (
@@ -240,11 +271,11 @@ export function FactorArea({
                 : 'まだ何も積んでいません（素数を入力して Enter）'}
             </span>
           ) : (
-            <span className="num flex flex-wrap items-center gap-1.5 text-[18px] font-black sm:text-[20px]">
+            <span className="num flex flex-wrap items-center justify-center gap-1.5 text-[20px] font-black sm:text-[24px]">
               {factors.map((f, i) => (
                 <span key={i} className="flex items-center gap-1.5">
                   {i > 0 && <span className="text-fuchsia-300">×</span>}
-                  <span className="animate-pop border border-cyan-300/50 bg-cyan-400/15 px-2 py-0.5 text-cyan-100">
+                  <span className="animate-pop border border-cyan-300/50 bg-cyan-400/15 px-2.5 py-1 text-cyan-100">
                     {f}
                   </span>
                 </span>
@@ -253,7 +284,7 @@ export function FactorArea({
                 remaining > 1 && (
                   <span className="flex items-center gap-1.5">
                     <span className="text-fuchsia-300">×</span>
-                    <span className="border border-dashed border-amber-300/60 bg-amber-400/10 px-2 py-0.5 text-amber-200">
+                    <span className="border border-dashed border-amber-300/60 bg-amber-400/10 px-2.5 py-1 text-amber-200">
                       {remaining.toLocaleString()}
                     </span>
                   </span>
