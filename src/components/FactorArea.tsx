@@ -317,8 +317,8 @@ export function FactorArea({
         </div>
       </form>
 
-      {/* 画面キーパッド（1〜9＋⌫）。⌫は入力中=1文字消し、空のとき=直近の素数を1つ消す */}
-      <div className="grid grid-cols-5 gap-2">
+      {/* 画面キーパッド（0〜9＋⌫）。101などの3桁素数も打てるよう0も含む */}
+      <div className="grid grid-cols-3 gap-2">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
           <button
             key={d}
@@ -330,6 +330,14 @@ export function FactorArea({
             {d}
           </button>
         ))}
+        <button
+          type="button"
+          disabled={locked}
+          onClick={() => pressDigit('0')}
+          className="num col-span-2 border border-cyan-300/25 bg-cyan-400/10 py-3 text-[18px] font-black text-cyan-100 transition hover:bg-cyan-400/20 active:scale-95 disabled:opacity-30"
+        >
+          0
+        </button>
         <button
           type="button"
           disabled={locked || (input === '' && factors.length === 0)}

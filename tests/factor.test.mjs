@@ -4,6 +4,7 @@ import {
   checkFactorDivideStep,
   checkFactorStep,
   clampFactorDigits,
+  FACTOR_PRIME_OPTIONS,
   factorize,
   generateFactorPuzzle,
   isPrime,
@@ -60,6 +61,38 @@ test('割り算式の判定: 含まれる素因数だけが割れ、違う素数
   const last = checkFactorDivideStep({ remaining: 7, value: 7 });
   assert.equal(last.ok, true);
   assert.equal(last.nextRemaining, 1);
+});
+
+test('素数候補: 3桁の素数まで全部選べる（最大997）', () => {
+  assert.equal(FACTOR_PRIME_OPTIONS[0], 2);
+  assert.equal(FACTOR_PRIME_OPTIONS[FACTOR_PRIME_OPTIONS.length - 1], 997);
+  assert.ok(FACTOR_PRIME_OPTIONS.includes(101));
+  assert.ok(FACTOR_PRIME_OPTIONS.includes(991));
+  assert.ok(FACTOR_PRIME_OPTIONS.includes(997));
+  assert.ok(!FACTOR_PRIME_OPTIONS.includes(999));
+  assert.ok(FACTOR_PRIME_OPTIONS.every((n) => isPrime(n)));
+});
+
+test('生成: 3桁の素数だけを使う問題も作れる', () => {
+  let i = 11;
+  const rng = () => {
+    i = (i * 1103515245 + 12345) % 2147483648;
+    return i / 2147483648;
+  };
+  const p = generateFactorPuzzle({
+    digits: 7,
+    minPrime: 101,
+    maxPrime: 997,
+    countMin: 3,
+    countMax: 3,
+    rng,
+    maxAttempts: 20_000,
+  });
+  assert.ok(p, '3桁素数を使う問題が生成できること');
+  assert.ok(p.value >= 1_000_000 && p.value <= 9_999_999, `value=${p.value}`);
+  assert.ok(p.factors.every((f) => f >= 101 && f <= 997 && isPrime(f)));
+  assert.equal(productOf(p.factors), p.value);
+  assert.deepEqual(factorize(p.value), p.factors);
 });
 
 test('生成: 桁数・下限〜上限・素因数の個数を満たす合成数だけを出す', () => {

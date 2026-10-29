@@ -15,8 +15,8 @@ export type FactorGameMode = 'make10' | 'factor';
  */
 export type FactorStyle = 'accumulate' | 'divide';
 
-/** GMが選べる素数の下限・上限の候補 */
-export const FACTOR_PRIME_OPTIONS = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
+/** GMが選べる素数の下限・上限の候補（3桁の素数まで全部） */
+export const FACTOR_PRIME_OPTIONS = primesUpTo(997);
 /** @deprecated 互換用 */
 export const FACTOR_MAX_PRIME_OPTIONS = FACTOR_PRIME_OPTIONS;
 
@@ -162,8 +162,9 @@ export interface FactorGenOptions {
 
 /**
  * 条件に合う合成数をランダム生成する。
- * 素因数をランダムに掛け合わせて、桁数が一致したものだけ採用する（リジェクト法）。
- * 原理的に作れない組み合わせ（例: 5桁・素因数2個・上限5）では null を返す。
+ * 残りの個数で目標桁に届く候補だけから素因子を選ぶため、3桁の素数を含む
+ * 大きな範囲でも生成しやすい。原理的に作れない組み合わせ
+ * （例: 5桁・素因数2個・上限5）では null を返す。
  */
 export function generateFactorPuzzle(opts: FactorGenOptions): FactorPuzzle | null {
   const digits = clampFactorDigits(opts.digits);
@@ -178,17 +179,41 @@ export function generateFactorPuzzle(opts: FactorGenOptions): FactorPuzzle | nul
   const rng = opts.rng ?? Math.random;
   const attempts = opts.maxAttempts ?? 60_000;
 
+  // その個数では桁の範囲に原理的に届かないものを先に除外する
+  const feasibleCounts: number[] = [];
+  for (let count = countMin; count <= countMax; count++) {
+    if (minPrime ** count <= hi && maxPrime ** count >= lo) feasibleCounts.push(count);
+  }
+  if (feasibleCounts.length === 0) return null;
+
+  const pick = <T,>(items: T[]): T =>
+    items[Math.min(items.length - 1, Math.floor(rng() * items.length))];
+
   for (let i = 0; i < attempts; i++) {
-    const count = countMin + Math.floor(rng() * (countMax - countMin + 1));
+    const count = pick(feasibleCounts);
     const factors: number[] = [];
     let product = 1;
-    for (let k = 0; k < count; k++) {
-      const p = primes[Math.min(primes.length - 1, Math.floor(rng() * primes.length))];
+    let valid = true;
+
+    for (let slot = 0; slot < count; slot++) {
+      const remainingAfter = count - slot - 1;
+      // この素数を選んでも、残りの素数で目標桁に届く可能性があるものだけを候補にする
+      const candidates = primes.filter((p) => {
+        const next = product * p;
+        return (
+          next * minPrime ** remainingAfter <= hi && next * maxPrime ** remainingAfter >= lo
+        );
+      });
+      if (candidates.length === 0) {
+        valid = false;
+        break;
+      }
+      const p = pick(candidates);
       factors.push(p);
       product *= p;
-      if (product > hi) break;
     }
-    if (factors.length === count && product >= lo && product <= hi) {
+
+    if (valid && factors.length === count && product >= lo && product <= hi) {
       factors.sort((a, b) => a - b);
       return { value: product, factors };
     }
