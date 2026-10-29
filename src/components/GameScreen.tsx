@@ -105,6 +105,10 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
   const [confirmForcePass, setConfirmForcePass] = useState(false);
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [gmBusy, setGmBusy] = useState(false);
+  const [autoNextLeftMs, setAutoNextLeftMs] = useState<number | null>(null);
+  const autoNextDeadlineRef = useRef<number | null>(null);
+  const nextRoundRef = useRef(ctrl.nextRound);
+  nextRoundRef.current = ctrl.nextRound;
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 100);
     return () => clearInterval(id);
@@ -138,11 +142,11 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
       frozenElapsedRef.current = Math.max(0, elapsedMs - COUNTDOWN_MS);
     }
   }, [myAnswer, elapsedMs]);
-  const displayElapsed = frozenElapsedRef.current ?? Math.max(0, elapsedMs - COUNTDOWN_MS);
-
+  // 全員共通の経過時間（自分が先に正解しても止まらず、ラウンド終了まで数え続ける）
+  const liveElapsed = Math.max(0, elapsedMs - COUNTDOWN_MS);
   const remainMs = settings.unlimitedTime
     ? null
-    : Math.max(0, settings.timeLimitSec * 1000 - displayElapsed);
+    : Math.max(0, settings.timeLimitSec * 1000 - liveElapsed);
   const timeFrac = remainMs === null ? null : remainMs / (settings.timeLimitSec * 1000);
 
   // カウントダウンの SE（3・2・1 → GO）
@@ -155,6 +159,27 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
     if (wasCountdownRef.current && !isCountdown) playSe('go');
     wasCountdownRef.current = isCountdown;
   }, [isCountdown]);
+
+  // 自動で次の問題へ（設定ON時、結果画面で10秒数えてから進める。進めるのはGMの端末）
+  useEffect(() => {
+    if (!judging || !settings.autoNextRound || confirmAbort) {
+      autoNextDeadlineRef.current = null;
+      setAutoNextLeftMs(null);
+      return;
+    }
+    if (autoNextDeadlineRef.current === null) {
+      autoNextDeadlineRef.current = Date.now() + 10_000;
+    }
+    const id = setInterval(() => {
+      const left = Math.max(0, (autoNextDeadlineRef.current ?? 0) - Date.now());
+      setAutoNextLeftMs(left);
+      if (left <= 0) {
+        autoNextDeadlineRef.current = null;
+        if (isGM) void nextRoundRef.current();
+      }
+    }, 200);
+    return () => clearInterval(id);
+  }, [judging, settings.autoNextRound, confirmAbort, isGM, r?.roundIndex]);
 
   // ラウンド確定時のお知らせ音
   const prevJudgingRef = useRef<string>('');
@@ -324,8 +349,19 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               )}
               style={{ textShadow: '0 0 20px rgba(34,224,255,.3)' }}
             >
-              {showMask ? '—' : ((remainMs ?? displayElapsed) / 1000).toFixed(1)}
+              {showMask ? '—' : ((remainMs ?? liveElapsed) / 1000).toFixed(1)}
             </span>
+            {!showMask && (!settings.unlimitedTime || frozenElapsedRef.current !== null) && (
+              <span className="jp mt-1 text-[10px] text-slate-400">
+                {!settings.unlimitedTime && <>経過 {(liveElapsed / 1000).toFixed(1)}秒</>}
+                {frozenElapsedRef.current !== null && (
+                  <>
+                    {!settings.unlimitedTime && ' ／ '}
+                    あなた {(frozenElapsedRef.current / 1000).toFixed(1)}秒
+                  </>
+                )}
+              </span>
+            )}
           </div>
           <div className="flex flex-col items-center border border-solar/40 bg-solar/8 px-3 py-1">
             <span className="label text-[8px] text-amber-200/70">{isFactor ? '分解する数' : 'TARGET'}</span>
@@ -807,6 +843,12 @@ export function GameScreen({ ctrl }: { ctrl: UseRoom }) {
               )}
             </div>
 
+            {settings.autoNextRound && autoNextLeftMs !== null && (
+              <div className="jp mt-5 text-center text-[11px] font-bold text-cyan-200">
+                {roundNo >= settings.roundCount ? '最終結果' : '次の問題'}まで あと{' '}
+                {(autoNextLeftMs / 1000).toFixed(1)} 秒（自動で進みます）
+              </div>
+            )}
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               {isGM ? (
                 <>

@@ -39,7 +39,9 @@ export interface Settings {
   allowedOperators: Op[];
   allowDuplicateNumbers: boolean;
   unlimitedTime: boolean;
-  timeLimitSec: number; // unlimitedTime=false のときのみ有効 (1〜300)
+  timeLimitSec: number; // unlimitedTime=false のときのみ有効 (5〜3600秒)
+  /** 結果画面のあと自動で次の問題を始める（10秒後） */
+  autoNextRound: boolean;
   roundCount: number;
   scoringMode: 'rank' | 'first' | 'flat' | 'custom';
   maxRankCount: number; // 何位まで得点するか（1〜50）
@@ -73,8 +75,9 @@ export const DEFAULT_SETTINGS: Settings = {
   randomTargetMax: 20,
   allowedOperators: ['+', '-', '*', '/'],
   allowDuplicateNumbers: false,
-  unlimitedTime: true,
-  timeLimitSec: 60,
+  unlimitedTime: false,
+  timeLimitSec: 180,
+  autoNextRound: false,
   roundCount: 10,
   scoringMode: 'rank',
   maxRankCount: 3,
@@ -184,6 +187,10 @@ export function normalizeSettings(raw: Partial<Settings> | undefined): Settings 
       clampFactorCount(s.factorCountMax, DEFAULT_SETTINGS.factorCountMax),
     );
   }
+  s.timeLimitSec = Number.isFinite(s.timeLimitSec)
+    ? Math.min(3600, Math.max(5, Math.floor(s.timeLimitSec)))
+    : DEFAULT_SETTINGS.timeLimitSec;
+  s.autoNextRound = s.autoNextRound === true;
   if (!BATTLE_MODES.includes(s.battleMode)) s.battleMode = 'solo';
   s.teamCount = clampTeamCount(s.teamCount);
   if (!TEAM_ASSIGN_MODES.includes(s.teamAssignMode)) s.teamAssignMode = 'balanced';

@@ -390,6 +390,12 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
           onChange={(v) => onChange({ unlimitedTime: v })}
         />
         <Toggle
+          label="結果のあと自動で次の問題へ（10秒後）"
+          disabled={dis}
+          checked={s.autoNextRound}
+          onChange={(v) => onChange({ autoNextRound: v })}
+        />
+        <Toggle
           label={s.gameMode === 'factor' ? '素因数の個数を問題に表示' : '解の通り数を問題に表示'}
           disabled={dis}
           checked={s.showDifficulty}
@@ -417,7 +423,7 @@ export function SettingsPanel({ settings, readOnly, onChange }: Props) {
               className={inputCls}
               disabled={dis}
               min={5}
-              max={300}
+              max={3600}
               value={s.timeLimitSec}
               onChange={(e) => onChange({ timeLimitSec: Number(e.target.value) })}
             />
