@@ -161,6 +161,34 @@ export interface FactorGenOptions {
 }
 
 /**
+ * 積の届く範囲だけを見て「原理的に作れない」と即断できる場合に、その理由を返す。
+ * 例: 3桁・素因数10個なら、最小の2を10個掛けても 1,024 になって3桁を超える。
+ * ここで理由が返らない場合でも、素数の組み合わせ次第では作れないことがある。
+ */
+export function factorGenerationIssue(opts: FactorGenOptions): string | null {
+  const digits = clampFactorDigits(opts.digits);
+  const maxPrime = snapFactorMaxPrime(opts.maxPrime);
+  const minPrime = Math.min(snapFactorPrime(opts.minPrime ?? 2, 2), maxPrime);
+  const countMin = clampFactorCount(opts.countMin, 2);
+  const countMax = Math.max(countMin, clampFactorCount(opts.countMax, countMin));
+  const lo = 10 ** (digits - 1);
+  const hi = 10 ** digits - 1;
+
+  if (primesBetween(minPrime, maxPrime).length === 0) {
+    return '指定した下限〜上限の範囲に素数がありません';
+  }
+  const smallestProduct = minPrime ** countMin;
+  if (smallestProduct > hi) {
+    return `素因数を${countMin}個以上掛けると、最小の素数${minPrime}だけでも積が${smallestProduct.toLocaleString()}になり、${digits}桁を超えます`;
+  }
+  const largestProduct = maxPrime ** countMax;
+  if (largestProduct < lo) {
+    return `素因数を${countMax}個まで掛けても、最大の素数${maxPrime}だけでは積が${largestProduct.toLocaleString()}までしかならず、${digits}桁に届きません`;
+  }
+  return null;
+}
+
+/**
  * 条件に合う合成数をランダム生成する。
  * 残りの個数で目標桁に届く候補だけから素因子を選ぶため、3桁の素数を含む
  * 大きな範囲でも生成しやすい。原理的に作れない組み合わせ

@@ -9,7 +9,7 @@ import { RoomHealthNotice } from './components/RoomHealthNotice';
 import { ChatOverlay } from './components/ChatOverlay';
 import { ChatDock } from './components/ChatDock';
 import { AudioControls } from './components/AudioControls';
-import { Spinner } from './components/ui';
+import { Button, Spinner } from './components/ui';
 import { playSe, resumeBgmIfNeeded, setBgm, unlockAudio } from './lib/audio';
 
 export default function App() {
@@ -21,8 +21,9 @@ export default function App() {
   const [, setTick] = useState(0);
   const preparingAt = typeof room?.preparingAt === 'number' ? room.preparingAt : null;
   const preparingElapsed = preparingAt ? Math.max(0, ctrl.serverNow() - preparingAt) : 0;
-  // 生成に失敗して preparingAt が残ってしまった場合でも、一定時間で必ず消す
-  const showPreparing = preparingAt !== null && preparingElapsed < 20_000;
+  // 探索は時間で勝手に終わらないので、準備中表示も時間では消さない
+  // （GMは下のボタンでいつでも探索をあきらめて閉じられる）
+  const showPreparing = preparingAt !== null;
 
   useEffect(() => {
     if (!showPreparing) return;
@@ -137,16 +138,25 @@ export default function App() {
             <p className="jp mt-1 text-[11px] leading-relaxed text-slate-400">
               GMが「必ず解ける問題」を探索しています。
               <br />
-              重い設定だと数秒かかることがあります。
+              見つかるまで探索を続けるので、重い設定だと長くかかることがあります。
             </p>
             <div className="num mt-3 flex items-center justify-center gap-3 text-[10px] tabular-nums text-slate-500">
               <span>{(preparingElapsed / 1000).toFixed(1)}s</span>
               {ctrl.isGM && ctrl.genProgress && <span>{ctrl.genProgress.attempts} TRIALS</span>}
             </div>
             {ctrl.isGM && (
-              <p className="jp mt-2 text-[10px] leading-relaxed text-slate-500">
-                最大3秒で打ち切り。ダメなら設定の見直しを（画面は固まりません）
-              </p>
+              <>
+                <p className="jp mt-2 text-[10px] leading-relaxed text-slate-500">
+                  時間で勝手に打ち切りません。やめるときは下のボタンで探索をあきらめられます
+                </p>
+                <Button
+                  variant="danger"
+                  className="mt-3 px-4 py-2.5 text-[11px]"
+                  onClick={() => void ctrl.cancelGeneration()}
+                >
+                  探索をあきらめる
+                </Button>
+              </>
             )}
           </div>
         </div>

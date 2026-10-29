@@ -5,6 +5,7 @@ import { PlayArea } from './PlayArea';
 import { FactorArea } from './FactorArea';
 import {
   FACTOR_PRIME_OPTIONS,
+  factorGenerationIssue,
   factorFormula,
   generateFactorPuzzle,
   type FactorPuzzle,
@@ -49,8 +50,17 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
       setLoading(false);
       setProgress(null);
       if (!fp) {
+        const issue = factorGenerationIssue({
+          digits: s.factorDigits,
+          minPrime: s.factorMinPrime,
+          maxPrime: s.factorMaxPrime,
+          countMin: s.factorCountMin,
+          countMax: s.factorCountMax,
+        });
         setError(
-          'この設定では条件に合う合成数を作れませんでした。桁数・下限素数・上限素数・素因数の個数を見直してください。',
+          issue
+            ? `この設定では合成数を作れません: ${issue}`
+            : 'この設定では条件に合う合成数を作れませんでした。桁数・下限素数・上限素数・素因数の個数を見直してください。',
         );
         return;
       }
@@ -60,9 +70,9 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
       setPuzzleSeq((n) => n + 1);
       return;
     }
-    // 生成はタイムスライス方式なので、重い設定でも画面は固まらない
+    // 生成はタイムスライス方式なので、重い設定でも画面は固まらない。
+    // 時間で勝手に打ち切らず、見つかるか「探索をあきらめる」まで続ける
     const p = await generatePuzzleAsync(s, {
-      deadlineMs: 3000,
       onProgress: (g) => {
         if (seqRef.current === mySeq) setProgress({ attempts: g.attempts, elapsedMs: g.elapsedMs });
       },
@@ -73,7 +83,7 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     setProgress(null);
     if (!p) {
       setError(
-        'この設定では時間内に解ける問題を作れませんでした。数字の範囲・演算子・目標値をゆるめてみてください。',
+        'この設定では解ける問題が見つかりませんでした。数字の範囲・演算子・目標値をゆるめてみてください。',
       );
       return;
     }
@@ -82,6 +92,15 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
     setSolPage(0);
     setPuzzleSeq((n) => n + 1);
   }, []);
+
+  /** 探索を途中であきらめる（進行中の生成は seq 不一致で破棄される） */
+  const cancelGeneration = () => {
+    seqRef.current++;
+    setLoading(false);
+    setProgress(null);
+    setShowSettings(true);
+    setError('問題の探索をあきらめました。設定を見直して、もう一度お試しください。');
+  };
 
   useEffect(() => {
     void newPuzzle(settings);
@@ -351,12 +370,18 @@ export function SoloScreen({ onExit }: { onExit: () => void }) {
           <div className="flex flex-col items-center gap-3">
             <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-cyan-300/20 border-t-cyan-300" />
             <span className="label text-cyan-200/80">GENERATING PUZZLE</span>
+            <span className="jp text-[11px] text-slate-400">
+              見つかるまで探索を続けます（時間で勝手に打ち切りません）
+            </span>
             {progress && (
               <span className="num text-[10px] tabular-nums text-slate-500">
                 {(progress.elapsedMs / 1000).toFixed(1)}s / {progress.attempts} trials
                 {progress.elapsedMs > 1200 && ' // 重い設定のため時間がかかっています'}
               </span>
             )}
+            <Button variant="ghost" className="px-4 py-2.5 text-[11px]" onClick={cancelGeneration}>
+              探索をあきらめる
+            </Button>
           </div>
         </Card>
       )}

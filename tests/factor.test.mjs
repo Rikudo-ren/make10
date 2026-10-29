@@ -5,6 +5,7 @@ import {
   checkFactorStep,
   clampFactorDigits,
   FACTOR_PRIME_OPTIONS,
+  factorGenerationIssue,
   factorize,
   generateFactorPuzzle,
   isPrime,
@@ -144,6 +145,33 @@ test('生成: 8桁の合成数も作れる', () => {
   assert.ok(p.value >= 10_000_000 && p.value <= 99_999_999, `value=${p.value}`);
   assert.equal(productOf(p.factors), p.value);
   assert.deepEqual(factorize(p.value), p.factors);
+});
+
+test('不可能な指定は理由を即判定する（例: 3桁・素因数10個）', () => {
+  const tooBig = factorGenerationIssue({
+    digits: 3,
+    minPrime: 2,
+    maxPrime: 13,
+    countMin: 10,
+    countMax: 10,
+  });
+  assert.match(tooBig ?? '', /1,024/);
+  assert.match(tooBig ?? '', /3桁を超えます/);
+
+  const tooSmall = factorGenerationIssue({
+    digits: 5,
+    minPrime: 2,
+    maxPrime: 5,
+    countMin: 2,
+    countMax: 2,
+  });
+  assert.match(tooSmall ?? '', /5桁に届きません/);
+
+  // 作れる指定では理由なし
+  assert.equal(
+    factorGenerationIssue({ digits: 3, minPrime: 2, maxPrime: 13, countMin: 3, countMax: 4 }),
+    null,
+  );
 });
 
 test('生成: 作れない組み合わせは null（例: 5桁・素因数2個・上限5）', () => {
